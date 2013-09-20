@@ -1,0 +1,4 @@
+language: c
+install: sudo apt-get update > /dev/null
+script:
+ - "./configure && make && make check"
