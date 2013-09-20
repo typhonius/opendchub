@@ -1,6 +1,7 @@
 language: c
 install: sudo apt-get update > /dev/null
 before_script:
+ - sudo apt-get install perl libperl-dev
  - tar zxf opendchub.tar.gz
  - cd opendchub
 script:
