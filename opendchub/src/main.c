@@ -1501,6 +1501,61 @@ int handle_command(char *buf, struct user_t *user)
 			 uprintf(user, "\r\nUser is not an operator.\r\n");		       
 		    }		  
 	       }
+	     else if(strncasecmp(temp, "$Gag ", 5) == 0)
+	       {
+		  if((user->type & (ADMIN | SCRIPT)) != 0)
+		    {
+		       ret = ballow(temp+5, GAG, user);
+		       if(user->type == ADMIN)
+			 {
+			    if(ret == -1)
+			      {
+				 uprintf(user, "\r\nCouldn't add entry to gag list\r\n");
+				 logprintf(4, "Error - Failed adding entry to gag list\n");
+			      }
+			    else if(ret == 2)
+			      uprintf(user, "\r\nEntry is already on the list\r\n");
+			    else
+			      {
+				 uprintf(user, "\r\nAdded entry to gag list\r\n");
+				 sscanf(temp+9, "%120[^|]", tempstr);
+				 logprintf(3, "Administrator at %s added %s to gag list\n", user->hostname, tempstr);
+			      }
+			 }
+		    }
+	       }
+	     else if(strncasecmp(temp, "$GetGagList", 11) == 0)
+	       {
+		  if(user->type == ADMIN)
+		    {
+		       uprintf(user, "\r\nGag list:\r\n");
+		       send_user_list(GAG, user);
+		       uprintf(user, "\r\n");
+		    }
+	       }
+	     else if(strncasecmp(temp, "$UnGag ", 7) == 0)
+	       {
+		  if((user->type & (ADMIN | SCRIPT)) != 0)
+		    {
+		       ret = unballow(temp+7, GAG);
+		       if(user->type == ADMIN)
+			   {
+			    if(ret == -1)
+			      {
+				 uprintf(user, "\r\nCouldn't remove entry from nickban list\r\n");
+				 logprintf(4, "Error - Failed adding entry to nickban list\n");
+			      }
+			    else if(ret == 2)
+			      uprintf(user, "\r\nEntry wasn't found in list\r\n");
+			    else
+			      {
+				 uprintf(user, "\r\nRemoved entry from nickban list\r\n");
+				 sscanf(temp+9, "%120[^|]", tempstr);
+				 logprintf(3, "Administrator at %s removed %s from nickban list\n", user->hostname, tempstr);
+			      }
+			 }
+		    }
+	       }
 	     else if(strncasecmp(temp, "$NickBan ", 9) == 0)
 	       {
 		  if((user->type & (ADMIN | SCRIPT)) != 0)
@@ -1640,7 +1695,7 @@ int new_human_user(int sock)
    int namelen;
    int yes = 1;
    int i = 0;
-   int banret, allowret;
+   int banret, allowret, gagret;
    int socknum;
    int erret;
    int flags;
@@ -1820,6 +1875,16 @@ int new_human_user(int sock)
 	     return -1;
 	  }   
      }
+   /* Check if the user is gagged */
+   gagret = check_if_gagged(user);
+   if (gagret == 1)
+   {
+   	user->gag = 1;
+   }
+   else
+   {
+   	user->gag = 0;
+   }
            
    /* Add sock struct of the user.  */
    add_socket(user);
@@ -2701,6 +2766,7 @@ int main(int argc, char *argv[])
      logprintf(1, "Created motd file\n");
    
    create_banlist();
+   create_gaglist();
    create_nickbanlist();
    create_allowlist();
    create_reglist();

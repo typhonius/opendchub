@@ -627,6 +627,66 @@ void create_banlist(void)
      }
 }
 
+/* Creates gaglist if it does not exist */
+void create_gaglist(void)
+{
+   FILE *fp;
+   int fd;
+   int erret;
+   char path[MAX_FDP_LEN+1];
+
+   snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, GAG_FILE);
+
+   while(((fd = open(path, O_RDONLY)) < 0) && (errno == EINTR))
+     logprintf(1, "Error - In create_gaglist()/open(): Interrupted system call. Trying again.\n");
+
+   if(fd >= 0)
+     {
+	/* gaglist already exists */
+	close(fd);
+	return;
+     }
+
+   while(((fd = open(path, O_RDWR | O_CREAT, 0600)) < 0) && (errno == EINTR))
+     logprintf(1, "Error - In create_gaglist()/open(): Interrupted system call. Trying again.\n");
+
+   if(fd < 0)
+     {
+	logprintf(1, "Error - In create_gaglist()/open(): ");
+	logerror(1, errno);
+	return;
+     }
+
+   /* Set the lock */
+   if(set_lock(fd, F_WRLCK) == 0)
+     {
+	logprintf(1, "Error - In create_gaglist(): Couldn't set lock\n");
+	close(fd);
+	return;
+     }
+
+   if((fp = fdopen(fd, "a")) == NULL)
+     {
+	logprintf(1, "Error - In create_gaglist()/fdopen(): ");
+	logerror(1, errno);
+	set_lock(fd, F_UNLCK);
+	close(fd);
+	return;
+     }
+
+   logprintf(1, "Created gaglist\n");
+   set_lock(fd, F_UNLCK);
+
+   while(((erret = fclose(fp)) != 0) && (errno == EINTR))
+     logprintf(1, "Error - In create_gaglist()/fclose(): Interrupted system call. Trying again.\n");
+
+   if(erret != 0)
+     {
+	logprintf(1, "Error - In create_gaglist()/fclose(): ");
+	logerror(1, errno);
+     }
+}
+
 /* Creates nickbanlist if it does not exist */
 void create_nickbanlist(void)
 {
@@ -1284,6 +1344,103 @@ int check_if_allowed(struct user_t *user)
      }
    
    return 0;
+}
+
+/* Returns 1 if a nick is on the gaglist */
+int check_if_gagged(struct user_t *user)
+{
+   int i, j;
+   int fd;
+   int erret;
+   FILE *fp;
+   char path[MAX_FDP_LEN+1];
+   char line[1024];
+   char gag_host[MAX_HOST_LEN+1];
+   char *string_ip = NULL;
+   unsigned long userip = 0;
+   unsigned long fileip = 0;
+   int byte1, byte2, byte3, byte4, mask;
+   time_t gag_time;
+   time_t now_time;
+   
+	snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, GAG_FILE);
+   	
+   while(((fd = open(path, O_RDONLY)) < 0) && (errno == EINTR))
+     logprintf(1, "Error - In check_if_gagged()/open(): Interrupted system call. Trying again.\n");   
+   
+   if(fd < 0)
+     {
+	logprintf(1, "Error - In check_if_gagged()/open(): ");
+	logerror(1, errno);
+	return -1;	
+     }
+   
+   /* Set the lock */
+   if(set_lock(fd, F_RDLCK) == 0)
+     {
+	logprintf(1, "Error - In check_if_gagged(): Couldn't set file lock\n");
+	close(fd);
+	return -1;
+     }   
+   
+   if((fp = fdopen(fd, "r")) == NULL)
+     {
+	logprintf(1, "Error - In check_if_gagged()/fdopen(): ");
+	logerror(1, errno);
+	set_lock(fd, F_UNLCK);
+	close(fd);
+	return -1;
+     }
+   
+   now_time = time(NULL);
+   
+   while(fgets(line, 1023, fp) != NULL)
+     {
+	trim_string(line);
+	gag_time = 0;
+	
+	j = strlen(line);
+	if(j != 0)
+	  {
+	     /* Jump to next char which isn't a space */
+	     i = 0;
+	     while(line[i] == ' ')
+	       i++;
+	     
+	     sscanf(line+i, "%120s %lu", gag_host, &gag_time);	     
+		  /* Check if a nickname is gagged.  */
+		  if(((gag_time == 0) || (gag_time > now_time)))
+		    {
+		       set_lock(fd, F_UNLCK);
+		       while(((erret = fclose(fp)) != 0) && (errno == EINTR))
+			 logprintf(1, "Error - In check_if_gagged()/fclose(): Interrupted system call. Trying again.\n");
+		       
+		       if(erret != 0)
+			 {
+			    logprintf(1, "Error - In check_if_gagged()/fclose(): ");
+			    logerror(1, errno);
+			    return -1;
+			 }
+		       
+		       return 1;
+		    }
+	       	
+          }
+     }
+   set_lock(fd, F_UNLCK);
+   
+   while(((erret = fclose(fp)) != 0) && (errno == EINTR))
+     logprintf(1, "Error - In check_if_gagged()/fclose(): Interrupted system call. Trying again.\n");
+   
+   if(erret != 0)
+     {
+	logprintf(1, "Error - In check_if_gagged()/fclose(): ");
+	logerror(1, errno);
+	return -1;
+     }
+   
+   return 0;
+
 }
 
 /* Returns 1 if a nick is on the registered list, 2 if nick is op and 3 if 

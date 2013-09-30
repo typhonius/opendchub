@@ -27,6 +27,7 @@ int get_permissions(char *user_nick);
 int write_config_file(void);
 int set_lock(int fd, int type);
 void create_banlist(void);
+void create_gaglist(void);
 void create_nickbanlist(void);
 void create_allowlist(void);
 void create_reglist(void);

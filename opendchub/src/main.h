@@ -41,6 +41,7 @@
 
 #define CONFIG_FILE        "config"        /* Name of config file */
 #define MOTD_FILE          "motd"          /* Name of file containing the motd */
+#define GAG_FILE           "gaglist"       /* Name of file with gagged users in */
 #define BAN_FILE           "banlist"       /* Name of file with banlist */
 #define NICKBAN_FILE       "nickbanlist"   /* Name of file with nick banlist */
 #define ALLOW_FILE         "allowlist"     /* Name of file with allowlist */
@@ -92,6 +93,7 @@
 #define CONFIG             3
 #define LINK               4
 #define NICKBAN            5
+#define GAG                6
 
 #define HOST               0
 #define IP                 1
@@ -114,6 +116,7 @@ struct user_t
    long unsigned ip;                  /* Ip address of user */ 
    char hostname[MAX_HOST_LEN+1];     /* Hostname of user */
    int  type;                         /* Type of user, types defined above. */
+   int  gag;                          /* If the user is gagged or not */
    char nick[MAX_NICK_LEN+1];         /* Nickname of user */ 
    char version[MAX_VERSION_LEN+1];   /* Version of client */ 
    char *email;                       /* Email of user, optional */ 

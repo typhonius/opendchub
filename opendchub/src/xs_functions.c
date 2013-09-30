@@ -528,6 +528,24 @@ XS(xs_add_nickban_entry)
    send_to_user("|", non_human_user_list);
 }
 
+XS(xs_add_gag_entry)
+{
+   char *entry;
+   dXSARGS;
+
+   if(items != 1)
+     XSRETURN_UNDEF;
+
+   if(!SvPOK(ST(0)))
+     XSRETURN_UNDEF;
+
+   entry = SvPVX(ST(0));
+
+   send_to_user("$Gag ", non_human_user_list);
+   send_to_user(entry, non_human_user_list);
+   send_to_user("|", non_human_user_list);
+}
+
 XS(xs_add_allow_entry)
 {   
    char *entry;
@@ -596,6 +614,24 @@ XS(xs_remove_nickban_entry)
    entry = SvPVX(ST(0));
    
    send_to_user("$UnNickBan ", non_human_user_list);
+   send_to_user(entry, non_human_user_list);
+   send_to_user("|", non_human_user_list);
+}
+
+XS(xs_remove_gag_entry)
+{
+   char *entry;
+   dXSARGS;
+
+   if(items != 1)
+     XSRETURN_UNDEF;
+
+   if(!SvPOK(ST(0)))
+     XSRETURN_UNDEF;
+
+   entry = SvPVX(ST(0));
+
+   send_to_user("$UnGag ", non_human_user_list);
    send_to_user(entry, non_human_user_list);
    send_to_user("|", non_human_user_list);
 }
@@ -873,6 +909,9 @@ EXTERN_C void xs_init(void)
    newXS("odch::check_if_banned", xs_check_if_banned, "xs_functions.c");
    newXS("odch::check_if_allowed", xs_check_if_allowed, "xs_functions.c");
    newXS("odch::data_to_user", xs_data_to_user, "xs_functions.c");
+   newXS("odch::gag_user", xs_add_gag_entry, "xs_functions.c");
+   newXS("odch::ungag_user", xs_remove_gag_entry, "xs_functions.c");
+   // newXS("odch::get_gag_list", xs_get_gag_list, "xs_functions.c");
    newXS("odch::kick_user", xs_kick_user, "xs_functions.c");
    newXS("odch::force_move_user", xs_force_move_user, "xs_functions.c");
    newXS("odch::get_variable", xs_get_variable, "xs_functions.c");

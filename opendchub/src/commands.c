@@ -480,6 +480,23 @@ void chat(char *buf, struct user_t *user)
 		  logprintf(3, "OP Admin %s at %s added %s to nickban list\n", user->nick, user->hostname, tempstr);
 	       }	     	    	     
 	  }
+
+	else if(((user->permissions & BAN_ALLOW) != 0) && (strncasecmp(temp, "!gag ", 5) == 0))
+	  {	     	     
+	     if((ret = ballow(temp+5, GAG, user)) == -1)
+	       {
+		  uprintf(user, "<Hub-Security> Couldn't add entry to gag list|");
+		  logprintf(4, "Error - Failed adding entry to gag list\n");
+	       }
+	     else if(ret == 2)		  
+	       uprintf(user, "<Hub-Security> Entry is already on the list|");
+	     else
+	       {
+		  uprintf(user, "<Hub-Security> Added entry to gag list|");
+		  sscanf(temp+5, "%120[^|]", tempstr);
+		  logprintf(3, "OP Admin %s at %s added %s to gag list\n", user->nick, user->hostname, tempstr);
+	       }	     	    	     
+	  }
 	
 	else if(((user->permissions & BAN_ALLOW) != 0) && (strncasecmp(temp, "!allow ", 7) == 0))
 	  {	    	     
@@ -529,6 +546,23 @@ void chat(char *buf, struct user_t *user)
 		  logprintf(3, "OP Admin %s at %s removed %s from nickban list\n", user->nick, user->hostname, tempstr);
 	       }	     	    	     
 	  }
+
+	else if(((user->permissions & BAN_ALLOW) != 0) && (strncasecmp(temp, "!ungag ", 7) == 0))
+	  {	     	     
+	     if((ret = unballow(temp+7, GAG)) == -1)
+	       {
+		  uprintf(user, "<Hub-Security> Couldn't remove entry from gag list|");
+		  logprintf(4, "Error - Failed removing entry from gag list\n");
+	       }
+	     else if(ret == 0)		  
+	       uprintf(user, "<Hub-Security> Entry wasn't found in list|");
+	     else
+	       {
+		  uprintf(user, "<Hub-Security> Removed entry from gag list|");
+		  sscanf(temp+7, "%120[^|]", tempstr);
+		  logprintf(3, "OP Admin %s at %s removed %s from gag list\n", user->nick, user->hostname, tempstr);
+	       }	     	    	     
+	  }
 	else if(((user->permissions & BAN_ALLOW) != 0) && (strncasecmp(temp, "!unallow ", 9) == 0))
 	  {	     	     
 	     if((ret = unballow(temp+9, ALLOW)) == -1)
@@ -555,6 +589,12 @@ void chat(char *buf, struct user_t *user)
 	  {
 	     uprintf(user, "<Hub-Security> Nickban list:\r\n");
 	     send_user_list(NICKBAN, user);
+	     send_to_user("|", user);
+	  }
+	else if(((user->permissions & BAN_ALLOW) != 0) && (strncasecmp(temp, "!getgaglist", 11) == 0))
+	  {
+	     uprintf(user, "<Hub-Security> Gag list:\r\n");
+	     send_user_list(GAG, user);
 	     send_to_user("|", user);
 	  }
 	else if(((user->permissions & BAN_ALLOW) != 0) && (strncasecmp(temp, "!getallowlist", 13) == 0))
@@ -727,8 +767,15 @@ void chat(char *buf, struct user_t *user)
    else
      {		
 	/* And forward the message to all.  */
+     	/* Check if user is gagged first */
+    if (user->gag == 1)
+    {
+    	uprintf(user, "<Hub-Security> You are gagged. No talking for you.|");
+    }
+    else {
 	send_to_non_humans(buf, FORKED, user);
 	send_to_humans(buf, REGULAR | REGISTERED | OP | OP_ADMIN, NULL);
+	}
      }
 }
 
@@ -2421,6 +2468,7 @@ int ballow(char *buf, int type, struct user_t *user)
    time_t ban_time = 0;
    time_t old_time;
    time_t now_time;
+   struct user_t *targ_user;
    
    /*   ban_user[0] = '\0'; */
    
@@ -2430,11 +2478,13 @@ int ballow(char *buf, int type, struct user_t *user)
      snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, ALLOW_FILE);
    else if(type == NICKBAN)
      snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, NICKBAN_FILE);
+   else if(type == GAG)
+     snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, GAG_FILE);
    else
      return -1;
    
    now_time = time(NULL);
-   if(type == NICKBAN)
+   if(type == NICKBAN || GAG)
      {
 	if(sscanf(buf, "%50s %lu%c", ban_host, &ban_time, &period) == 1)
 	  ban_host[strlen(ban_host) - 1] = '\0';
@@ -2561,8 +2611,15 @@ int ballow(char *buf, int type, struct user_t *user)
 	return -1;
      }	
    
-   if(type == NICKBAN)
+   if(type == NICKBAN || GAG)
      {
+     if(type == GAG)
+     {
+   		if((targ_user = get_human_user(ban_host)) != NULL)
+        {
+     	   targ_user->gag = 1;
+        }
+ 	 }
 	if (ban_time > 0)
 	   sprintf(ban_line, "%s %lu", ban_host, now_time + ban_time);
 	else
@@ -2627,6 +2684,21 @@ int ballow(char *buf, int type, struct user_t *user)
 		    non_format_to_scripts(ban_host);
 		 }
 	       command_to_scripts("|");
+	    }
+	else if(type == GAG)
+	    {
+	       if (ban_time > 0)
+		 {
+		    command_to_scripts("$Script added_temp_gag %c%c", '\005', '\005');
+		    non_format_to_scripts(ban_host);
+		    command_to_scripts("%c%c%lu", '\005', '\005', ban_time);
+		 }
+	       else
+		 {
+		    command_to_scripts("$Script added_perm_gag %c%c", '\005', '\005');
+		    non_format_to_scripts(ban_host);
+		 }
+	       command_to_scripts("|");
 	    }	
      }   
 #endif
@@ -2641,6 +2713,7 @@ int unballow(char *buf, int type)
    int ret;
    char line[MAX_HOST_LEN+1];
    char path[MAX_FDP_LEN+1];
+   struct user_t *targ_user;
    
    if(type == BAN)
      snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, BAN_FILE);
@@ -2648,11 +2721,20 @@ int unballow(char *buf, int type)
      snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, ALLOW_FILE);
    else if(type == NICKBAN)
      snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, NICKBAN_FILE);
+   else if(type == GAG)
+     snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, GAG_FILE);
    else
      return -1;
    
    sscanf(buf, "%120[^|]", line);
    remove_exp_from_file(time(NULL), path);
+   if(type == GAG)
+     {
+   		if((targ_user = get_human_user(line)) != NULL)
+        {
+     	   targ_user->gag = 0;
+        }
+ 	 }
    ret = remove_line_from_file(line, path, 0);
    
    return ret;
@@ -2682,6 +2764,8 @@ void send_user_list(int type, struct user_t *user)
      snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, LINK_FILE);
    else if(type == NICKBAN)
      snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, NICKBAN_FILE);
+   else if(type == GAG)
+     snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, GAG_FILE);
    else
      return;
    
@@ -3105,6 +3189,13 @@ void send_commands(struct user_t *user)
      uprintf(user, "Adds an entry to the nick banlist. The time is the same as for the ban command\r\n\r\n");
    
    if(user->type == ADMIN)
+     uprintf(user, "$gag 'nick' 'time'|\r\n");
+   else if(((user->permissions & BAN_ALLOW) != 0) && ((user->type & (OP_ADMIN | OP)) != 0))
+     uprintf(user, "!gag 'nick' 'time'\r\n");
+   if(((user->type & (ADMIN | OP_ADMIN)) != 0) || ((user->permissions & BAN_ALLOW) != 0))
+     uprintf(user, "Adds an entry to the gaglist. The time is the same as for the ban command\r\n\r\n");
+   
+   if(user->type == ADMIN)
      uprintf(user, "$allow 'ip or hostname'|\r\n");
    else if(((user->permissions & BAN_ALLOW) != 0) && ((user->type & (OP_ADMIN | OP)) != 0))
      uprintf(user, "!allow 'ip or hostname'\r\n");
@@ -3124,6 +3215,13 @@ void send_commands(struct user_t *user)
      uprintf(user, "!getnickbanlist\r\n");
    if(((user->type & (ADMIN | OP_ADMIN)) != 0) || ((user->permissions & BAN_ALLOW) != 0))
      uprintf(user, "Displays the nick banlist file.\r\n\r\n");
+
+   if(user->type == ADMIN)
+     uprintf(user, "$getgaglist|\r\n");
+   else if(((user->permissions & BAN_ALLOW) != 0) && ((user->type & (OP_ADMIN | OP)) != 0))
+     uprintf(user, "!getgaglist\r\n");
+   if(((user->type & (ADMIN | OP_ADMIN)) != 0) || ((user->permissions & BAN_ALLOW) != 0))
+     uprintf(user, "Displays the gaglist file.\r\n\r\n");
 		  
    if(user->type == ADMIN)
      uprintf(user, "$getallowlist|\r\n");
@@ -3145,6 +3243,13 @@ void send_commands(struct user_t *user)
      uprintf(user, "!unnickban 'nick'\r\n");
    if(((user->type & (ADMIN | OP_ADMIN)) != 0) || ((user->permissions & BAN_ALLOW) != 0))
      uprintf(user, "Removes an entry from the nick banlist file. The nick entry in the file must\r\nbe an exact match of the one provided in the command.\r\n\r\n");
+   
+   if(user->type == ADMIN)
+     uprintf(user, "$ungag 'nick'|\r\n");
+   else if(((user->permissions & BAN_ALLOW) != 0) && ((user->type & (OP_ADMIN | OP)) != 0 ))
+     uprintf(user, "!ungag 'nick'\r\n");
+   if(((user->type & (ADMIN | OP_ADMIN)) != 0) || ((user->permissions & BAN_ALLOW) != 0))
+     uprintf(user, "Removes an entry from the gaglist file. The nick entry in the file must\r\nbe an exact match of the one provided in the command.\r\n\r\n");
    
    if(user->type == ADMIN)
      uprintf(user, "$unallow 'ip or hostname'|\r\n");
@@ -3376,6 +3481,18 @@ void remove_expired(void)
    remove_exp_from_file(now_time, path);
    snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, NICKBAN_FILE);
    remove_exp_from_file(now_time, path);
+   snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, GAG_FILE);
+   remove_exp_from_file(now_time, path);
+}
+
+int gag_user(char *buf, struct user_t *user)
+{
+
+}
+
+int ungag_user(char *buf, struct user_t *user)
+{
+
 }
 
 int show_perms(struct user_t *user, char *buf)
