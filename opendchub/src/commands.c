@@ -1643,6 +1643,10 @@ int my_pass(char *buf, struct user_t *user)
    struct user_t *d_user;
    char *user_list_nick;
    
+   /* Debug check to see which username is used when user logs in
+    * which is helpful if the hub keeps crashing */
+   logprintf(1, "User %s logging in\n", user->nick);
+   
    ret = check_pass(buf, user);
    
    switch(ret)
