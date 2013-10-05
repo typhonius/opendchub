@@ -103,13 +103,11 @@ EOF
 
 # Assume su of the user, download then install ODCH.
 echo "Downloading and installing ODCH"
-su hub
-cd
-git clone https://github.com/odchbot/opendchub && cd opendchub
-tar zxf opendchub.tar.gz && cd opendchub
-./configure > /dev/null
-make > /dev/null
-sudo make install
+su hub -c 'git clone https://github.com/odchbot/opendchub /home/hub/opendchub' && cd /home/hub/opendchub
+su hub -c 'tar zxf opendchub.tar.gz' && cd opendchub
+su hub -c './configure > /dev/null'
+su hub -c 'make > /dev/null'
+su hub -c 'sudo make install'
 
 #We'll need to IP of the server for the ODCH config file
 HOST_IP= ifconfig | egrep "inet addr:(.*)  Bcast" | awk {'print $2'} | cut -d ':' -f 2-
@@ -188,7 +186,8 @@ sleep 2
 cd ~/.opendchub/
 rm -rf scripts
 git clone -b v3 https://github.com/odchbot/odchbot.git scripts
-opendchub
+chown -R hub. /home/hub/.opendchub
+su hub -c 'opendchub'
 
 #Adding default nick:pass to the reglist
 echo "Adding default nickname and password to the reglist - use 'nick' as the nickname and 'pass' as the password"
