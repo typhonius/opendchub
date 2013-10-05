@@ -52,9 +52,7 @@ cpanm Clone Config::IniFiles Cwd DBI Data::Dumper DateTime DateTime::Duration Da
 
 # Configure stunnel by writing the CSR
 "Generating PEM files for stunnel and creating the conf file"
-sleep 2
-cd /etc/stunnel
-sudo cat > /etc/stunnel/stunnel.csr << "EOF"
+cat > /etc/stunnel/stunnel.csr << "EOF"
 FQDN = test.example.org
 ORGNAME = DC Hub
 ALTNAME = DNS:$FQDN
@@ -113,9 +111,7 @@ su hub -c 'sudo make install'
 HOST_IP= ifconfig | egrep "inet addr:(.*)  Bcast" | awk {'print $2'} | cut -d ':' -f 2-
 
 echo "Writing out ODCH config prior to starting"
-sleep 1
-#Write the ODCH config to ~/.opendchub/config
-cat > ~/.opendchub/config << "EOF"
+cat > /home/hub/.opendchub/config << "EOF"
 hub_name = "Open DC Hub"
 
 max_users = 1000
@@ -182,13 +178,11 @@ EOF
 
 #Take the terminal to the correct ODCH directory, remove the default scripts directory and clone the CB repo before starting ODCH
 echo "Removing default scripts dir and downloading the bot repo"
-sleep 2
-cd ~/.opendchub/
-rm -rf scripts
-git clone -b v3 https://github.com/odchbot/odchbot.git scripts
+rm -rf /home/hub/.opendchub/scripts
+git clone -b v3 https://github.com/odchbot/odchbot.git /home/hub/.opendchub/scripts
 chown -R hub. /home/hub/.opendchub
 su hub -c 'opendchub'
 
 #Adding default nick:pass to the reglist
 echo "Adding default nickname and password to the reglist - use 'nick' as the nickname and 'pass' as the password"
-echo 'nick $1$vpW4FsNG$ObxMyxwPZ7617qvy8WxCS. 2' | tee ~/.opendchub/reglist
+echo 'nick $1$vpW4FsNG$ObxMyxwPZ7617qvy8WxCS. 2' | tee /home/hub/.opendchub/reglist
