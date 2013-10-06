@@ -101,7 +101,8 @@ EOF
 
 # Assume su of the user, download then install ODCH.
 echo "Downloading and installing ODCH"
-su hub -c 'git clone https://github.com/odchbot/opendchub /home/hub/opendchub' && cd /home/hub/opendchub
+cd /home/hub
+su hub -c 'git clone https://github.com/odchbot/opendchub' && cd /home/hub/opendchub
 su hub -c 'tar zxf opendchub.tar.gz' && cd opendchub
 su hub -c './configure > /dev/null'
 su hub -c 'make > /dev/null'
