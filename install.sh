@@ -79,8 +79,8 @@ chmod 600 /etc/stunnel/stunnel.pem
 
 #Create the conf file for stunnel
 cat > /etc/stunnel/stunnel.conf << "EOF"
-cert = stunnel.pem
-key = stunnel.pem
+cert = /etc/stunnel/stunnel.pem
+key = /etc/stunnel/stunnel.pem
 debug = 4
 output = stunnel.log
 ;ciphers = AES128-SHA:AES256-SHA:DHE-DSS-AES128-SHA:DHE-DSS-AES256-SHA:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA
@@ -98,6 +98,9 @@ connect = 11234
 
 TIMEOUTclose = 0
 EOF
+
+echo "Starting stunnel"
+stunnel4
 
 # Assume su of the user, download then install ODCH.
 echo "Downloading and installing ODCH"
@@ -187,3 +190,10 @@ su hub -c 'opendchub'
 #Adding default nick:pass to the reglist
 echo "Adding default nickname and password to the reglist - use 'nick' as the nickname and 'pass' as the password"
 echo 'nick $1$vpW4FsNG$ObxMyxwPZ7617qvy8WxCS. 2' | tee /home/hub/.opendchub/reglist
+
+echo "Your users will be able to connect directly to OpenDCHub using $HOST_IP:11234 or via stunnel by adding the following line to their own stunnel.conf and then connecting to localhost:8008"
+echo "[ODCH]"
+echo "accept = 8008"
+echo "connect = $HOST_IP:8118"
+
+
