@@ -9,4 +9,4 @@ Instructions
 1. Run the script
 
 The above may be accomplished with the following one liner
-````wget https://raw.github.com/odchbot/opendchub/master/install.sh && chmod +x install.sh && ./install.sh````
+````wget -q https://raw.github.com/odchbot/opendchub/master/install.sh && chmod +x install.sh && ./install.sh````
