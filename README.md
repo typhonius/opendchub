@@ -12,6 +12,7 @@ The above may be accomplished with the following one liner
 ````wget -q https://raw.github.com/odchbot/opendchub/master/install.sh && chmod +x install.sh && ./install.sh````
 
 The script above does the following:
+
 1. Creates a user called 'hub'
 2. Adds hub to sudoers
 3. Downloads all ODCH prerequisites
