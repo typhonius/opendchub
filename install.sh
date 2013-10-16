@@ -184,6 +184,7 @@ EOF
 echo "Removing default scripts dir and downloading the bot repo"
 rm -rf /home/hub/.opendchub/scripts
 git clone -b v3 https://github.com/odchbot/odchbot.git /home/hub/.opendchub/scripts
+cp /home/hub/.opendchub/scripts/odchbot.yml.example /home/hub/.opendchub/scripts/odchbot.yml
 chown -R hub. /home/hub/.opendchub
 su hub -c 'opendchub'
 
