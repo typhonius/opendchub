@@ -47,7 +47,7 @@ apt-get install -y make gcc++ autoconf stunnel libperl-dev git curl openssl sudo
 #Install CPAN stuff
 echo "Downloading CPAN, cpanimus and all bot prerequisites. This may take several minutes to complete."
 curl -L http://cpanmin.us | perl - --self-upgrade > /dev/null
-cpanm Clone Config::IniFiles Cwd DBI Data::Dumper DateTime DateTime::Duration DateTime::Format::Duration Exporter File::Basename FindBin HTTP::Request IPC::System::Simple JSON LWP::Simple LWP::UserAgent List::Util Log::Log4perl Mail::Sendmail Math::Round Module::Load Number::Bytes::Human Number::Format POSIX SQL::Abstract::Limit SQL::Abstract Scalar::Util Storable Switch Sys::Hostname Text::Tabs Time::HiRes XML::Simple YAML::AppConfig > /dev/null
+cpanm Clone Config::IniFiles Cwd DBI Data::Dumper DateTime DateTime::Duration DateTime::Format::Duration Exporter File::Basename FindBin HTTP::Request IPC::System::Simple JSON LWP::Simple LWP::UserAgent List::Util Log::Log4perl Mail::Sendmail Math::Round Module::Load Number::Bytes::Human Number::Format POSIX SQL::Abstract::Limit SQL::Abstract Scalar::Util Storable Switch Sys::Hostname Text::Tabs Time::HiRes XML::Simple YAML YAML::AppConfig > /dev/null
 
 
 # Configure stunnel by writing the CSR
