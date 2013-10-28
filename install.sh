@@ -42,7 +42,7 @@ echo "hub ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
 echo "Updating OS"
 apt-get update -y > /dev/null
-apt-get install -y make gcc++ autoconf stunnel libperl-dev git curl openssl sudo expat libexpat1-dev > /dev/null
+apt-get install -y make gcc++ autoconf stunnel libperl-dev git curl openssl sudo expat libexpat1-dev sqlite3 libsqlite3-dev > /dev/null
 
 #Install CPAN stuff
 echo "Downloading CPAN, cpanimus and all bot prerequisites. This may take several minutes to complete."
