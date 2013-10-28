@@ -93,8 +93,12 @@ socket = r:TCP_NODELAY=1
 ;fips = no
 
 [DC]
-accept = 8118
-connect = 11234
+accept = 7659
+connect = 8145
+
+[DC2]
+accept = 7660
+connect = 8145
 
 TIMEOUTclose = 0
 EOF
@@ -134,7 +138,7 @@ link_pass = "idmwqofuhewqf"
 
 users_per_fork = 1000
 
-listening_port = 11234
+listening_port = 8145
 
 admin_port = 53696
 
@@ -192,9 +196,9 @@ su hub -c 'opendchub'
 echo "Adding default nickname and password to the reglist - use 'nick' as the nickname and 'pass' as the password"
 echo 'nick $1$vpW4FsNG$ObxMyxwPZ7617qvy8WxCS. 2' | tee /home/hub/.opendchub/reglist
 
-echo "Your users will be able to connect directly to OpenDCHub using $HOST_IP:11234 or via stunnel by adding the following line to their own stunnel.conf and then connecting to localhost:8008"
+echo "Your users will be able to connect directly to OpenDCHub using $HOST_IP:8145 or via stunnel by adding the following line to their own stunnel.conf and then connecting to localhost:8008"
 echo "[ODCH]"
 echo "accept = 8008"
-echo "connect = $HOST_IP:8118"
+echo "connect = $HOST_IP:7659"
 
 
