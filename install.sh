@@ -116,7 +116,7 @@ su hub -c 'make > /dev/null'
 su hub -c 'sudo make install'
 
 #We'll need to IP of the server for the ODCH config file
-HOST_IP= ifconfig | egrep "inet addr:(.*)  Bcast" | awk {'print $2'} | cut -d ':' -f 2-
+HOST_IP=`ifconfig | egrep "inet addr:(.*)  Bcast" | awk {'print $2'} | cut -d ':' -f 2-`
 
 echo "Writing out ODCH config prior to starting"
 cat > /home/hub/.opendchub/config << "EOF"
