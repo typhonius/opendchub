@@ -193,8 +193,12 @@ chown -R hub. /home/hub/.opendchub
 su hub -c 'opendchub'
 
 #Adding default nick:pass to the reglist
-echo "Adding default nickname and password to the reglist - use 'nick' as the nickname and 'pass' as the password"
-echo 'nick $1$vpW4FsNG$ObxMyxwPZ7617qvy8WxCS. 2' | tee /home/hub/.opendchub/reglist
+SALT=`< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-10};echo;`
+PW=`< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-18};echo;`
+HASH=`openssl passwd -1 -salt $SALT $PW`
+
+echo "Adding default nickname and password to the reglist - use 'dc_admin' as the nickname and $PASS as the password"
+echo "dc_admin $HASH 2" | tee /home/hub/.opendchub/reglist
 
 echo "Your users will be able to connect directly to OpenDCHub using $HOST_IP:8145 or via stunnel by adding the following line to their own stunnel.conf and then connecting to localhost:8008"
 echo "[ODCH]"
