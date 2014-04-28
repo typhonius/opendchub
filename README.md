@@ -1,4 +1,4 @@
-opendchub [![Build Status](https://travis-ci.org/odchbot/opendchub.png?branch=master)](https://travis-ci.org/odchbot/opendchub)
+opendchub [![Build Status](https://travis-ci.org/odchbot/opendchub.svg?branch=master)](https://travis-ci.org/odchbot/opendchub)
 =========
 
 Instructions
