@@ -42,7 +42,7 @@ echo "hub ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
 echo "Updating OS"
 apt-get update -y > /dev/null
-apt-get install -y make gcc++ autoconf stunnel libperl-dev git curl openssl sudo expat libexpat1-dev sqlite3 libsqlite3-dev > /dev/null
+apt-get install -y make gcc autoconf stunnel libperl-dev git curl openssl sudo expat libexpat1-dev sqlite3 libsqlite3-dev > /dev/null
 
 #Install CPAN stuff
 echo "Downloading CPAN, cpanimus and all bot prerequisites. This may take several minutes to complete."
@@ -187,7 +187,7 @@ EOF
 #Take the terminal to the correct ODCH directory, remove the default scripts directory and clone the CB repo before starting ODCH
 echo "Removing default scripts dir and downloading the bot repo"
 rm -rf /home/hub/.opendchub/scripts
-git clone -b v3 https://github.com/odchbot/odchbot.git /home/hub/.opendchub/scripts
+git clone -b v3 https://github.com/typhonius/odchbot.git /home/hub/.opendchub/scripts
 cp /home/hub/.opendchub/scripts/odchbot.yml.example /home/hub/.opendchub/scripts/odchbot.yml
 chown -R hub. /home/hub/.opendchub
 su hub -c 'opendchub'
