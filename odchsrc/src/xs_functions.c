@@ -909,8 +909,8 @@ EXTERN_C void xs_init(void)
    newXS("odch::check_if_banned", xs_check_if_banned, "xs_functions.c");
    newXS("odch::check_if_allowed", xs_check_if_allowed, "xs_functions.c");
    newXS("odch::data_to_user", xs_data_to_user, "xs_functions.c");
-   newXS("odch::gag_user", xs_add_gag_entry, "xs_functions.c");
-   newXS("odch::ungag_user", xs_remove_gag_entry, "xs_functions.c");
+   newXS("odch::add_gag_entry", xs_add_gag_entry, "xs_functions.c");
+   newXS("odch::remove_gag_entry", xs_remove_gag_entry, "xs_functions.c");
    // newXS("odch::get_gag_list", xs_get_gag_list, "xs_functions.c");
    newXS("odch::kick_user", xs_kick_user, "xs_functions.c");
    newXS("odch::force_move_user", xs_force_move_user, "xs_functions.c");
