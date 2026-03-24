@@ -35,6 +35,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout odchbot
+        uses: actions/checkout@v4
+        with:
+          repository: typhonius/odchbot
+          ref: v3
+          path: odchbot
+
       - name: Build Docker test image
         run: docker build -f Dockerfile.test -t odch-test .
 
