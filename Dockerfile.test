@@ -1,0 +1,54 @@
+FROM debian:bullseye-slim
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    autoconf \
+    automake \
+    perl \
+    libperl-dev \
+    libcrypt-dev \
+    netcat-openbsd \
+    procps \
+    cpanminus \
+    libdbi-perl \
+    libdbd-sqlite3-perl \
+    libyaml-appconfig-perl \
+    libyaml-perl \
+    libyaml-syck-perl \
+    libdatetime-perl \
+    libdatetime-format-duration-perl \
+    libsql-abstract-perl \
+    libnumber-bytes-human-perl \
+    libclone-perl \
+    libjson-perl \
+    liblog-log4perl-perl \
+    liburi-perl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN cpanm SQL::Abstract::Limit --notest 2>/dev/null || true
+
+RUN mkdir -p /root/.opendchub
+
+# Build opendchub
+COPY odchsrc/ /build/odchsrc/
+
+WORKDIR /build/odchsrc
+
+RUN automake --add-missing --copy 2>/dev/null || true
+RUN autoreconf -fi 2>/dev/null || autoconf -f
+RUN CFLAGS="-fcommon" ./configure 2>&1 | tail -5
+RUN make
+RUN ls -la src/opendchub
+
+# Copy odchbot
+COPY odchbot/ /build/odchbot/
+
+# Create database directory for odchbot
+RUN mkdir -p /build/odchbot/logs
+
+# Copy test scripts
+COPY test_gag.sh /build/test_gag.sh
+COPY test_integration.pl /build/test_integration.pl
+RUN chmod +x /build/test_gag.sh /build/test_integration.pl
+
+CMD ["/build/test_gag.sh"]
