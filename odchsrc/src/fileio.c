@@ -1356,10 +1356,6 @@ int check_if_gagged(struct user_t *user)
    char path[MAX_FDP_LEN+1];
    char line[1024];
    char gag_host[MAX_HOST_LEN+1];
-   char *string_ip = NULL;
-   unsigned long userip = 0;
-   unsigned long fileip = 0;
-   int byte1, byte2, byte3, byte4, mask;
    time_t gag_time;
    time_t now_time;
    
@@ -1409,7 +1405,8 @@ int check_if_gagged(struct user_t *user)
 	     
 	     sscanf(line+i, "%120s %lu", gag_host, &gag_time);	     
 		  /* Check if a nickname is gagged.  */
-		  if(((gag_time == 0) || (gag_time > now_time)))
+		  if(((gag_time == 0) || (gag_time > now_time))
+		     && (match_with_wildcards(user->nick, gag_host) != 0))
 		    {
 		       set_lock(fd, F_UNLCK);
 		       while(((erret = fclose(fp)) != 0) && (errno == EINTR))
