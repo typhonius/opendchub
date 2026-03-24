@@ -38,7 +38,7 @@
 
 #define EXTERN_C extern
 
-EXTERN_C void boot_DynaLoader (CV* cv);
+EXTERN_C void boot_DynaLoader (pTHX_ CV* cv);
 static char *user_list = NULL;
 static char *description = NULL;
 static char *email = NULL;
@@ -276,8 +276,11 @@ XS(xs_check_if_banned)
    ret = check_if_banned(user, BAN);
    if(ret != 1)
      ret = check_if_banned(user, NICKBAN);
-   
-   (ret == 1) ? XSRETURN_IV(1) : XSRETURN_IV(0);
+
+   if(ret == 1)
+     XSRETURN_IV(1);
+   else
+     XSRETURN_IV(0);
 }
 
 XS(xs_check_if_allowed)
@@ -296,8 +299,11 @@ XS(xs_check_if_allowed)
      XSRETURN_UNDEF;
    
    ret = check_if_allowed(user);
-   
-   (ret == 1) ? XSRETURN_IV(1) : XSRETURN_IV(0);
+
+   if(ret == 1)
+     XSRETURN_IV(1);
+   else
+     XSRETURN_IV(0);
 }
 
 XS(xs_data_to_user)
