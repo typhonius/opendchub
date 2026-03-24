@@ -2625,18 +2625,18 @@ int ballow(char *buf, int type, struct user_t *user)
         }
  	 }
 	if (ban_time > 0)
-	   sprintf(ban_line, "%s %lu", ban_host, now_time + ban_time);
+	   snprintf(ban_line, sizeof(ban_line), "%s %lu", ban_host, now_time + ban_time);
 	else
-	   sprintf(ban_line, "%s 0", ban_host);
+	   snprintf(ban_line, sizeof(ban_line), "%s 0", ban_host);
      }
    else
      {
 	if (ban_time > 0)
 	  /* sprintf(ban_line, "%s %lu %s", ban_host, now_time + ban_time, ban_user); */
-	  sprintf(ban_line, "%s %lu", ban_host, now_time + ban_time);
+	  snprintf(ban_line, sizeof(ban_line), "%s %lu", ban_host, now_time + ban_time);
 	else	  
 	  /* sprintf(ban_line, "%s 0 %s", ban_host, ban_user); */
-	  sprintf(ban_line, "%s 0", ban_host);
+	  snprintf(ban_line, sizeof(ban_line), "%s 0", ban_host);
      }
    ret = add_line_to_file(ban_line, path); 
    
