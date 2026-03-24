@@ -2579,7 +2579,7 @@ int remove_line_from_file(char *line, char *file, int port)
    
    if(fd < 0)
      {
-	logprintf(1, "Error - In remove_line_from_file()/open(), file = %s: ", file);	logprintf(1, "Error - In remove_line_from_file()/open(), file = %s: ", file);	logprintf(1, "Error - In remove_line_from_file()/open(), file = %s: ", file);
+	logprintf(1, "Error - In remove_line_from_file()/open(), file = %s: ", file);
 	logerror(1, errno);
 	free(temp);
 	return -1;	
