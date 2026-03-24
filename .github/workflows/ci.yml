@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y perl libperl-dev autoconf automake build-essential
+
+      - name: Build
+        working-directory: odchsrc
+        run: |
+          automake --add-missing --copy 2>/dev/null || true
+          autoreconf -fi 2>/dev/null || autoconf -f
+          CFLAGS="-fcommon" ./configure
+          make
+
+      - name: Verify binary
+        run: test -x odchsrc/src/opendchub
+
+  integration:
+    runs-on: ubuntu-latest
+    name: Integration tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout odchbot
+        uses: actions/checkout@v4
+        with:
+          repository: typhonius/odchbot
+          ref: v3
+          path: odchbot
+
+      - name: Build Docker test image
+        run: docker build --no-cache -f Dockerfile.test -t odch-test .
+
+      - name: Run integration tests
+        run: docker run --rm odch-test
