@@ -241,6 +241,7 @@ cp /build/odchbot/DCBDatabase.pm /root/.opendchub/scripts/
 cp /build/odchbot/DCBCommon.pm /root/.opendchub/scripts/
 cp /build/odchbot/DCBUser.pm /root/.opendchub/scripts/
 cp /build/odchbot/odchbot.yml /root/.opendchub/scripts/odchbot.yml
+chmod 600 /root/.opendchub/scripts/odchbot.yml
 cp /build/odchbot/odchbot.log4perl.conf /root/.opendchub/scripts/
 cp -r /build/odchbot/commands /root/.opendchub/scripts/commands
 mkdir -p /root/.opendchub/scripts/logs
