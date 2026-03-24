@@ -2488,7 +2488,7 @@ int ballow(char *buf, int type, struct user_t *user)
      return -1;
    
    now_time = time(NULL);
-   if(type == NICKBAN || GAG)
+   if(type == NICKBAN || type == GAG)
      {
 	if(sscanf(buf, "%50s %lu%c", ban_host, &ban_time, &period) == 1)
 	  ban_host[strlen(ban_host) - 1] = '\0';
@@ -2615,7 +2615,7 @@ int ballow(char *buf, int type, struct user_t *user)
 	return -1;
      }	
    
-   if(type == NICKBAN || GAG)
+   if(type == NICKBAN || type == GAG)
      {
      if(type == GAG)
      {
