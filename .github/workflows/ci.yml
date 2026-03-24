@@ -43,7 +43,7 @@ jobs:
           path: odchbot
 
       - name: Build Docker test image
-        run: docker build -f Dockerfile.test -t odch-test .
+        run: docker build --no-cache -f Dockerfile.test -t odch-test .
 
       - name: Run integration tests
         run: docker run --rm odch-test
