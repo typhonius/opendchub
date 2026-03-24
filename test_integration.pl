@@ -558,7 +558,7 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
         # Re-fetch command list and check key commands are registered
         drain_socket($sock);
         my $full_cmds = send_command($sock, "commands", 5);
-        my @expected_cmds = qw(time coin commands help mynick topic rules karma stats info history first last tell winning uptime seen quote roll);
+        my @expected_cmds = qw(time coin commands help mynick topic rules karma stats info history first last tell winning uptime seen quote roll gag ungag);
         my $cmds_found = 0;
         my $cmds_missing = 0;
         for my $cmd (@expected_cmds) {
