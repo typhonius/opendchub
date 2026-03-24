@@ -137,8 +137,16 @@ void sr(char *buf, struct user_t *user)
    strcpy(send_buf, buf);
 
    /* Remove the nick at the end */
-   *(strrchr(send_buf, '\005') + 1) = '\0';
-   *(strrchr(send_buf, '\005')) = '|';
+   {
+      char *p = strrchr(send_buf, '\005');
+      if(p != NULL)
+	{
+	   *(p + 1) = '\0';
+	   p = strrchr(send_buf, '\005');
+	   if(p != NULL)
+	     *p = '|';
+	}
+   }
 
    /* And then forward it */
    if((to_user = get_human_user(tonick)) != NULL)
@@ -1128,7 +1136,7 @@ int my_info(char *org_buf, struct user_t *user)
 	  return 0;
      }
    
-   /* If the command was sent from a human, make sure that the provided nick 
+   /*ï¿½If the command was sent from a human, make sure that the provided nick 
     * matches the one provided with $ValidateNick.  */
     if((user->type & (NON_LOGGED | REGULAR | REGISTERED | OP | OP_ADMIN)) != 0)
      {

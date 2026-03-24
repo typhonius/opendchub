@@ -144,7 +144,8 @@ int perl_init(void)
 	       }
 	     
 	     remote_addr.sun_family = AF_UNIX;
-	     strcpy(remote_addr.sun_path, un_sock_path);
+	     strncpy(remote_addr.sun_path, un_sock_path, sizeof(remote_addr.sun_path) - 1);
+	     remote_addr.sun_path[sizeof(remote_addr.sun_path) - 1] = '\0';
 	     len = strlen(remote_addr.sun_path) + sizeof(remote_addr.sun_family) + 1;
 	     if(connect(sock, (struct sockaddr *)&remote_addr, len) == -1)
 	       {	     

@@ -65,17 +65,21 @@ int cut_string(char *buf, char c)
    return -1;
 }
 
-/* Appends to the end of a string */
-/* NO checking of buf size, so it MUST be big enough */
+/* Appends to the end of a string using a safe intermediate buffer */
 /* The string usually has to be zeroed before this can be used */
-void sprintfa(char *buf, const char *format, ...)
-{  
-   if(format)
+void sprintfa(char *buf, size_t bufsize, const char *format, ...)
+{
+   if(format && bufsize > 0)
      {
-	va_list args;
-	va_start(args, format);
-	vsprintf(buf + strlen(buf), format, args);
-	va_end(args);
+	size_t current_len = strlen(buf);
+	if(current_len < bufsize - 1)
+	  {
+	     va_list args;
+	     va_start(args, format);
+	     vsnprintf(buf + current_len, bufsize - current_len, format, args);
+	     va_end(args);
+	     buf[bufsize - 1] = '\0';
+	  }
      }
 }
 
@@ -219,11 +223,11 @@ void send_lock(struct user_t *user)
 	if(j == '\0') 
 	  goto create_lock;
 	
-	sprintfa(lock_string, " Pk=");
+	sprintfa(lock_string, sizeof(lock_string), " Pk=");
 	k += 4;
 	for(j = 0; j <= 15; j++)
 	  lock_string[k+j] = '%' + rand()%('z'-'%');
-	sprintfa(lock_string, "|");
+	sprintfa(lock_string, sizeof(lock_string), "|");
      }
    else
      sprintf(lock_string, "$Lock Sending_key_isn't_neccessary,_key_won't_be_checked. Pk=Same_goes_here.|");
@@ -292,19 +296,19 @@ int validate_key(char *buf, struct user_t *user)
 	switch(j)
 	  {
 	   case 5:
-	     sprintfa(key, "/%%DCN005%%/");
+	     sprintfa(key, sizeof(key), "/%%DCN005%%/");
 	     break;
-	     
+
 	   case '$':
-	     sprintfa(key, "/%%DCN036%%/");
+	     sprintfa(key, sizeof(key), "/%%DCN036%%/");
 	     break;
-	     
+
 	   case 96:
-	     sprintfa(key, "/%%DCN096%%/");
+	     sprintfa(key, sizeof(key), "/%%DCN096%%/");
 	     break;
-	     
+
 	   default:
-	     sprintfa(key, "%c", j);
+	     sprintfa(key, sizeof(key), "%c", j);
 	     break;
 	  }
      }

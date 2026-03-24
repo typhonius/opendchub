@@ -150,6 +150,7 @@ int read_config(void)
 		       return -1;
 		    }
 		  strncpy(hub_name, strchr(line + i, '"') + 1, MAX_HUB_NAME);
+		  hub_name[MAX_HUB_NAME] = '\0';
 		  if(*(hub_name + strlen(hub_name) - 1) == '"')
 		    *(hub_name + strlen(hub_name) - 1) = '\0';
 	       }
@@ -213,7 +214,7 @@ int read_config(void)
 			    fclose(fp);
 			    return -1;
 			 }
-		       sprintfa(hub_full_mess, "\r\n%s", line);
+		       sprintfa(hub_full_mess, strlen(hub_full_mess) + strlen(line) + 3, "\r\n%s", line);
 		    }
 		  if(*(hub_full_mess + strlen(hub_full_mess) - 1) == '"')
 		     *(hub_full_mess + strlen(hub_full_mess) - 1) = '\0';
@@ -239,6 +240,7 @@ int read_config(void)
 		       return -1;
 		    }
 		  strncpy(hub_description, strchr(line + i, '"') + 1, MAX_HUB_DESC);
+		  hub_description[MAX_HUB_DESC] = '\0';
 		  if(*(hub_description + strlen(hub_description) - 1) == '"')
 		    *(hub_description + strlen(hub_description) - 1) = '\0';
 	       }
@@ -270,6 +272,7 @@ int read_config(void)
 		       return -1;
 		    }
 		  strncpy(admin_pass, strchr(line + i, '"') + 1, MAX_ADMIN_PASS_LEN);
+		  admin_pass[MAX_ADMIN_PASS_LEN] = '\0';
 		  if(*(admin_pass + strlen(admin_pass) - 1) == '"')
 		    *(admin_pass + strlen(admin_pass) - 1) = '\0';
 	       }
@@ -293,6 +296,7 @@ int read_config(void)
                        return -1;
                     }
                   strncpy(default_pass, strchr(line + i, '"') + 1, MAX_ADMIN_PASS_LEN);
+                  default_pass[MAX_ADMIN_PASS_LEN] = '\0';
                   if(*(default_pass + strlen(default_pass) - 1) == '"')
                     *(default_pass + strlen(default_pass) - 1) = '\0';
                }
@@ -316,6 +320,7 @@ int read_config(void)
 		       return -1;
 		    }
 		  strncpy(link_pass, strchr(line + i, '"') + 1, MAX_ADMIN_PASS_LEN);
+		  link_pass[MAX_ADMIN_PASS_LEN] = '\0';
 		  if(*(link_pass + strlen(link_pass) - 1) == '"')
 		    *(link_pass + strlen(link_pass) - 1) = '\0';
 	       }
@@ -362,7 +367,8 @@ int read_config(void)
 		       
 		       return -1;
 		    }
-		  strncpy(public_hub_host, strchr(line + i, '"') + 1, 121);
+		  strncpy(public_hub_host, strchr(line + i, '"') + 1, MAX_HOST_LEN);
+		  public_hub_host[MAX_HOST_LEN] = '\0';
 		  if(*(public_hub_host + strlen(public_hub_host) - 1) == '"')
 		    *(public_hub_host + strlen(public_hub_host) - 1) = '\0';
 	       }
@@ -386,7 +392,8 @@ int read_config(void)
 		       
 		       return -1;
 		    }
-		  strncpy(hub_hostname, strchr(line + i, '"') + 1, 121);
+		  strncpy(hub_hostname, strchr(line + i, '"') + 1, MAX_HOST_LEN);
+		  hub_hostname[MAX_HOST_LEN] = '\0';
 		  if(*(hub_hostname + strlen(hub_hostname) - 1) == '"')
 		    *(hub_hostname + strlen(hub_hostname) - 1) = '\0';
 	       }
@@ -411,6 +418,7 @@ int read_config(void)
 		       return -1;
 		    }
 		  strncpy(min_version, strchr(line + i, '"') + 1, 30);
+		  min_version[30] = '\0';
 		  if(*(min_version + strlen(min_version) - 1) == '"')
 		    *(min_version + strlen(min_version) - 1) = '\0';
 	       }
@@ -443,7 +451,8 @@ int read_config(void)
 		       
 		       return 1;
 		    }
-		  strncpy(redirect_host, strchr(line + i, '"') + 1, 121);
+		  strncpy(redirect_host, strchr(line + i, '"') + 1, MAX_HOST_LEN);
+		  redirect_host[MAX_HOST_LEN] = '\0';
 		  if(*(redirect_host + strlen(redirect_host) - 1) == '"')
 		    *(redirect_host + strlen(redirect_host) - 1) = '\0';
 	       }
@@ -2186,7 +2195,7 @@ int init_dirs(void)
    strncpy(path, working_dir, MAX_FDP_LEN);
    snprintf( config_dir, MAX_FDP_LEN, "%s/.opendchub", path );
 
-   sprintfa(path, "/tmp");
+   sprintfa(path, MAX_FDP_LEN + 1, "/tmp");
    sprintf(un_sock_path, "%s/%s", path, UN_SOCK_NAME);
    sprintf(script_dir, "%s/%s", config_dir, SCRIPT_DIR);
    mkdir(config_dir, 0700);

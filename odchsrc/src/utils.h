@@ -16,10 +16,10 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-
+#include <stddef.h>
 
 int    cut_string(char *buf, char c);
-void   sprintfa(char *buf, const char *format, ...);
+void   sprintfa(char *buf, size_t bufsize, const char *format, ...);
 int    trim_string(char *buf);
 int    count_users(int type);
 int    count_all_users(void);
