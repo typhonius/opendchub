@@ -505,7 +505,8 @@ int get_listening_unx_socket(void)
    
    memset(&local_addr, 0, sizeof(struct sockaddr_un));
    local_addr.sun_family = AF_UNIX;
-   strcpy(local_addr.sun_path, un_sock_path);
+   strncpy(local_addr.sun_path, un_sock_path, sizeof(local_addr.sun_path) - 1);
+   local_addr.sun_path[sizeof(local_addr.sun_path) - 1] = '\0';
    unlink(local_addr.sun_path);
    len = strlen(local_addr.sun_path) + sizeof(local_addr.sun_family) + 1;
    
@@ -699,59 +700,59 @@ void upload_to_hublist(int nbrusers)
    switch(j)
      {
       case 5:
-	sprintfa(key, "/%%DCN005%%/");
+	sprintfa(key, sizeof(key), "/%%DCN005%%/");
 	break;
-	
+
       case 36:
-	sprintfa(key, "/%%DCN036%%/");
+	sprintfa(key, sizeof(key), "/%%DCN036%%/");
 	break;
-	
+
       case 96:
-	sprintfa(key, "/%%DCN096%%/");
+	sprintfa(key, sizeof(key), "/%%DCN096%%/");
 	break;
-	
+
       default:
-	sprintfa(key, "%c", j);
+	sprintfa(key, sizeof(key), "%c", j);
 	break;
      }
    bufp++;
-   
+
    for(k = bufp; k <= buf_len; k++)
      {
 	i = (((unsigned int)(buf[k]     ))&0xff)
 	  ^ (((unsigned int)(buf[k-1]   ))&0xff);
-	
+
 	j = ((i | (i << 8)) >> 4)&0xff;
-	
+
 	switch(j)
 	  {
 	   case 5:
-	     sprintfa(key, "/%%DCN005%%/");
+	     sprintfa(key, sizeof(key), "/%%DCN005%%/");
 	     break;
-	     
+
 	   case '$':
-	     sprintfa(key, "/%%DCN036%%/");
+	     sprintfa(key, sizeof(key), "/%%DCN036%%/");
 	     break;
 
 	   case 96:
-	     sprintfa(key, "/%%DCN096%%/");
+	     sprintfa(key, sizeof(key), "/%%DCN096%%/");
 	     break;
-	     
+
 	   default:
-	     sprintfa(key, "%c", j);
+	     sprintfa(key, sizeof(key), "%c", j);
 	     break;
 	  }
      }
-   
-   sprintfa(key, "|");
-   
+
+   sprintfa(key, sizeof(key), "|");
+
    /* The listening port only needs to be uploaded if it's not 411 because
     * the Windoze client defaults to port 411 */
    if(listening_port == 411)
-     sprintfa(key, "%s|%s|%s|%d|%llu|", hub_name, hub_hostname,
+     sprintfa(key, sizeof(key), "%s|%s|%s|%d|%llu|", hub_name, hub_hostname,
 	      hub_description, nbrusers, get_total_share());
    else
-     sprintfa(key, "%s|%s:%u|%s|%d|%llu|", hub_name, hub_hostname, 
+     sprintfa(key, sizeof(key), "%s|%s:%u|%s|%d|%llu|", hub_name, hub_hostname,
 	      listening_port, hub_description, nbrusers, get_total_share());
    
    /* And finally, upload the key */

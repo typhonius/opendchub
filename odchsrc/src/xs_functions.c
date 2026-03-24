@@ -882,7 +882,7 @@ XS(xs_get_user_list)
 		  quit = 1;
 		  XSRETURN_UNDEF;
 	       }		  
-	     sprintfa(user_list, "%s ", temp_nick);	       	     
+	     sprintfa(user_list, strlen(user_list) + strlen(temp_nick) + 2, "%s ", temp_nick);	       	     
 	  }	
 	bufp += USER_LIST_ENT_SIZE;
      }

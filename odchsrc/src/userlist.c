@@ -676,7 +676,7 @@ char *get_op_list(void)
 		       quit = 1;
 		       return NULL;
 		    }
-		  sprintfa(op_list, "%s$$", temp_nick);
+		  sprintfa(op_list, strlen(op_list) + strlen(temp_nick) + 3, "%s$$", temp_nick);
 	       }
 	  }
 	bufp += USER_LIST_ENT_SIZE;

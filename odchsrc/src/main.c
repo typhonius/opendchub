@@ -323,7 +323,8 @@ void fork_process(void)
 	  }		
 	
 	remote_addr.sun_family = AF_UNIX;
-	strcpy(remote_addr.sun_path, un_sock_path);
+	strncpy(remote_addr.sun_path, un_sock_path, sizeof(remote_addr.sun_path) - 1);
+	remote_addr.sun_path[sizeof(remote_addr.sun_path) - 1] = '\0';
 	len = strlen(remote_addr.sun_path) + sizeof(remote_addr.sun_family) + 1;
 	if(connect(sock, (struct sockaddr *)&remote_addr, len) == -1)
 	  {
@@ -650,13 +651,15 @@ void send_user_info(struct user_t *from_user, char *to_user_nick, int all)
    char *send_buf;
    struct user_t *to_user;
    int to_nick_len;
-   
+   size_t send_buf_size;
+
    (all != 0) ? (to_nick_len = 5) : (to_nick_len = strlen(to_user_nick)+1);
-   
-   if((send_buf = malloc(sizeof(char) * (9 + to_nick_len 
+
+   send_buf_size = 9 + to_nick_len
 		 + strlen(from_user->nick) + 1
-	         + ((from_user->desc == NULL) ? 0 : strlen(from_user->desc)) + 4 + 10 
-	         + ((from_user->email == NULL) ? 0 : strlen(from_user->email)) + 20 + 1))) == NULL)
+	         + ((from_user->desc == NULL) ? 0 : strlen(from_user->desc)) + 4 + 10
+	         + ((from_user->email == NULL) ? 0 : strlen(from_user->email)) + 20 + 1;
+   if((send_buf = malloc(sizeof(char) * send_buf_size)) == NULL)
      {
 	logprintf(1, "Error - In send_user_info()/malloc(): ");
 	logerror(1, errno);
@@ -669,63 +672,63 @@ void send_user_info(struct user_t *from_user, char *to_user_nick, int all)
    else
      sprintf(send_buf, "$MyINFO $%s ", to_user_nick);
    
-   sprintfa(send_buf, "%s", from_user->nick);
-   sprintfa(send_buf, " ");
+   sprintfa(send_buf, send_buf_size, "%s", from_user->nick);
+   sprintfa(send_buf, send_buf_size, " ");
    if(from_user->desc != NULL)
-     sprintfa(send_buf, "%s", from_user->desc);
-   sprintfa(send_buf, "$ $");
+     sprintfa(send_buf, send_buf_size, "%s", from_user->desc);
+   sprintfa(send_buf, send_buf_size, "$ $");
    switch(from_user->con_type)
      {
       case 1:
-	sprintfa(send_buf, "28.8Kbps");
+	sprintfa(send_buf, send_buf_size, "28.8Kbps");
 	break;
       case 2:
-	sprintfa(send_buf, "33.6Kbps");
+	sprintfa(send_buf, send_buf_size, "33.6Kbps");
 	break;
       case 3:
-	sprintfa(send_buf, "56Kbps");
+	sprintfa(send_buf, send_buf_size, "56Kbps");
 	break;
       case 4:
-	sprintfa(send_buf, "Satellite");
+	sprintfa(send_buf, send_buf_size, "Satellite");
 	break;
       case 5:
-	sprintfa(send_buf, "ISDN");
+	sprintfa(send_buf, send_buf_size, "ISDN");
 	break;
       case 6:
-	sprintfa(send_buf, "DSL");
+	sprintfa(send_buf, send_buf_size, "DSL");
 	break;
       case 7:
-	sprintfa(send_buf, "Cable");
+	sprintfa(send_buf, send_buf_size, "Cable");
 	break;
       case 8:
-	sprintfa(send_buf, "LAN(T1)");
+	sprintfa(send_buf, send_buf_size, "LAN(T1)");
 	break;
       case 9:
-	sprintfa(send_buf, "LAN(T3)");
+	sprintfa(send_buf, send_buf_size, "LAN(T3)");
 	break;
 // @Ciuly: added some other connection types
       case 10:
-	sprintfa(send_buf, "Wireless");
+	sprintfa(send_buf, send_buf_size, "Wireless");
         break;
       case 11:
-	sprintfa(send_buf, "Modem");
+	sprintfa(send_buf, send_buf_size, "Modem");
         break;
       case 12:
-	sprintfa(send_buf, "Netlimiter");
+	sprintfa(send_buf, send_buf_size, "Netlimiter");
         break;
 // end @Ciuly
-// Start fix for 1027168 by Ciuly	
+// Start fix for 1027168 by Ciuly
       default:
-        sprintfa(send_buf, "Unknown");
+        sprintfa(send_buf, send_buf_size, "Unknown");
         break;
 // End fix for 1027168
      }
-   sprintfa(send_buf, "%c", from_user->flag);
-   sprintfa(send_buf, "$");
+   sprintfa(send_buf, send_buf_size, "%c", from_user->flag);
+   sprintfa(send_buf, send_buf_size, "$");
    if(from_user->email != NULL)
-      sprintfa(send_buf, "%s", from_user->email);
-   sprintfa(send_buf, "$%lld", from_user->share);
-   sprintfa(send_buf, "$|");
+      sprintfa(send_buf, send_buf_size, "%s", from_user->email);
+   sprintfa(send_buf, send_buf_size, "$%lld", from_user->share);
+   sprintfa(send_buf, send_buf_size, "$|");
 
    /* The $Script user represents all scripts, so send the string to all 
     * running scripts.  */
@@ -757,7 +760,7 @@ void hub_mess(struct user_t *user, int mess_type)
 	  }
 
 	sprintf(send_string, "$HubName %s|", hub_name);
-	sprintfa(send_string, "<Hub-Security> This hub is running version %s of Open DC Hub.|", VERSION);
+	sprintfa(send_string, 110, "<Hub-Security> This hub is running version %s of Open DC Hub.|", VERSION);
 	break;
 	
 	/* If the hub is full, tell user */
@@ -1764,9 +1767,15 @@ int new_human_user(int sock)
    
    /* Set users hostname if reverse_dns is set.  */
    if(reverse_dns != 0)
-     strcpy(user->hostname, hostname_from_ip(user->ip));
+     {
+	strncpy(user->hostname, hostname_from_ip(user->ip), MAX_HOST_LEN);
+	user->hostname[MAX_HOST_LEN] = '\0';
+     }
    else
-     strcpy(user->hostname, inet_ntoa(client.sin_addr));
+     {
+	strncpy(user->hostname, inet_ntoa(client.sin_addr), MAX_HOST_LEN);
+	user->hostname[MAX_HOST_LEN] = '\0';
+     }
    
    /* Send to scripts */
 #ifdef HAVE_PERL
