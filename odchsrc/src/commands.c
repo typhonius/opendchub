@@ -45,9 +45,6 @@
 #if HAVE_FCNTL_H
 # include <fcntl.h>
 #endif
-#if HAVE_MALLOC_H
-#include <malloc.h>
-#endif
 #include <errno.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
@@ -134,7 +131,7 @@ void sr(char *buf, struct user_t *user)
 	quit = 1;
 	return;
      }
-   strcpy(send_buf, buf);
+   snprintf(send_buf, strlen(buf) + 1, "%s", buf);
 
    /* Remove the nick at the end */
    {
@@ -190,7 +187,9 @@ void search(char *buf, struct user_t *user)
 	if(((user->type & (REGULAR | REGISTERED | OP | OP_ADMIN)) != 0) &&
 	   (searchcheck_exclude_all == 0))
 	  {	     
-	     if(!((strncmp(ip, ip_to_string(user->ip), strlen(ip)) == 0)
+	     char user_ip_str[INET_ADDRSTRLEN];
+	     ip_to_string(user->ip, user_ip_str, sizeof(user_ip_str));
+	     if(!((strncmp(ip, user_ip_str, strlen(ip)) == 0)
 		  || (strncmp(port, user->nick, strlen(port)) == 0)
                   || (is_internal_address(user->ip) == 0)))
 	       {
@@ -1087,8 +1086,7 @@ int my_info(char *org_buf, struct user_t *user)
 		  quit = 1;
 		  return -1;
 	       }
-	     strcpy(send_buf, "$MyINFO $ALL ");
-	     strcat(send_buf, buf);
+	     snprintf(send_buf, strlen(buf) + 14, "$MyINFO $ALL %s", buf);
 	     /* If it's the $Script user, send to all scripts.  */
 	     if((strncmp(to_nick, "$Script", 7) == 0) && (pid > 0))
 	       send_to_non_humans(send_buf, SCRIPT, user);
@@ -1320,36 +1318,36 @@ int my_info(char *org_buf, struct user_t *user)
 		       remove_user_from_list(user->nick);
 		       remove_human_from_hash(user->nick);
 		       user->type = NON_LOGGED;
-		       sprintf(quit_string, "$Quit %s|", user->nick);
-		       send_to_humans(quit_string, REGULAR | REGISTERED | OP 
+		       snprintf(quit_string, sizeof(quit_string), "$Quit %s|", user->nick);
+		       send_to_humans(quit_string, REGULAR | REGISTERED | OP
 				      | OP_ADMIN, user);
 		       send_to_non_humans(quit_string, FORKED, NULL);
-#ifdef HAVE_PERL		       
+#ifdef HAVE_PERL
 		       command_to_scripts("$Script user_disconnected %c%c", '\005', '\005');
 		       non_format_to_scripts(user->nick);
-		       command_to_scripts("|");		       
-#endif		       
-		    }		  
+		       command_to_scripts("|");
+#endif
+		    }
 		  return 1;
 	       }
 	     else
 	       uprintf(user, "$Hello %s|$To: %s From: Hub $Minimum share for this hub is %lld MegaBytes. Please share some more.|", user->nick, user->nick, (long long)min_share / (1024*1024));
 	  }
-	
+
 	else
 	  {
 	     if((redir_on_min_share == 1) && (redirect_host != NULL) && ((int)redirect_host[0] > 0x20))
-	       {		  
+	       {
 		  uprintf(user, "$Hello %s|$To: %s From: Hub $Minimum share for this hub is %2.2f GigaBytes. You are being redirected.|", user->nick, user->nick, (double)min_share / (1024*1024*1024));
 		  uprintf(user, "$ForceMove %s|", redirect_host);
 		  logprintf(1, "User %s at %s doesn't share enough, redirecting user\n", user->nick, user->hostname);
-		  if((user->type & (REGULAR | REGISTERED | OP | OP_ADMIN)) 
+		  if((user->type & (REGULAR | REGISTERED | OP | OP_ADMIN))
 		     != 0)
 		    {
 		       remove_user_from_list(user->nick);
 		       remove_human_from_hash(user->nick);
 		       user->type = NON_LOGGED;
-		       sprintf(quit_string, "$Quit %s|", user->nick);
+		       snprintf(quit_string, sizeof(quit_string), "$Quit %s|", user->nick);
 		       send_to_humans(quit_string, REGULAR | REGISTERED | OP 
 				      | OP_ADMIN, user);
 		       send_to_non_humans(quit_string, FORKED, NULL);
@@ -1386,7 +1384,7 @@ int my_info(char *org_buf, struct user_t *user)
    /* If the user has been non logged in so far, send Hello string first.  */
    if((user->type & (NON_LOGGED | FORKED)) != 0)
      {
-	sprintf(hello_buf, "$Hello %s|", user->nick);
+	snprintf(hello_buf, sizeof(hello_buf), "$Hello %s|", user->nick);
 	send_to_non_humans(hello_buf, FORKED, user);
 	send_to_humans(hello_buf, REGULAR | REGISTERED | OP | OP_ADMIN, user);
      }
@@ -1520,15 +1518,16 @@ int validate_nick(char *buf, struct user_t *user)
 	else
 	  {
 	     /* If user is a script, kick the user who has taken the nick.  */
-	     logprintf(4, "validate_nick() - Warning: Script already in user_list.\n");	
-	     sprintf(kickstring, "$Kick %s|", temp_nick);
+	     logprintf(4, "validate_nick() - Warning: Script already in user_list.\n");
+	     snprintf(kickstring, sizeof(kickstring), "$Kick %s|", temp_nick);
 	     kick(kickstring, NULL, 0);
 	  }
      }
 
    if(user->type != SCRIPT)
-     {		
-	strcpy(user->nick, temp_nick);
+     {
+	strncpy(user->nick, temp_nick, MAX_NICK_LEN);
+	user->nick[MAX_NICK_LEN] = '\0';
 	if(check_if_registered(temp_nick) != 0)
 	  {
 	     hub_mess(user, GET_PASS_MESS);	     
@@ -1576,14 +1575,15 @@ int validate_nick(char *buf, struct user_t *user)
      }
    /* And if user is a script, set the nick and add to nicklist.  */
    else
-     {	
-	strcpy(user->nick, temp_nick);
+     {
+	strncpy(user->nick, temp_nick, MAX_NICK_LEN);
+	user->nick[MAX_NICK_LEN] = '\0';
 	if(add_user_to_list(user) == 0)
 	  {
 	     increase_user_list();
 	     add_user_to_list(user);
-	  }	
-	sprintf(hello_buf, "$Hello %s|", user->nick);
+	  }
+	snprintf(hello_buf, sizeof(hello_buf), "$Hello %s|", user->nick);
 	sock = human_sock_list;
 	op_list = get_op_list();
 	while(sock != NULL)
@@ -1666,27 +1666,28 @@ int my_pass(char *buf, struct user_t *user)
 	if((user_list_nick = check_if_on_user_list(user->nick)) != NULL)
 	  {
 	     remove_user_from_list(user->nick);
-	     sprintf(quit_string, "$Quit %s|", user_list_nick);
+	     snprintf(quit_string, sizeof(quit_string), "$Quit %s|", user_list_nick);
 	     send_to_humans(quit_string, REGULAR | REGISTERED | OP | OP_ADMIN,
 			    user);
-	     send_to_non_humans(quit_string, FORKED, NULL);	     
+	     send_to_non_humans(quit_string, FORKED, NULL);
 	     if((d_user = get_human_user(user->nick)) != NULL)
-	       {		 
+	       {
 		  remove_human_from_hash(user->nick);
 		  /* Change the nick so that it won't be removed from the
 		   * hashtable after it has been added again.  */
-		  strcpy(d_user->nick, "removed user");
+		  strncpy(d_user->nick, "removed user", MAX_NICK_LEN);
+		  d_user->nick[MAX_NICK_LEN] = '\0';
 		  d_user->rem = REMOVE_USER;
-	       }    
+	       }
 	     else
-	       {		  
-		  sprintf(remove_string, "$DiscUser %s|", user->nick);
+	       {
+		  snprintf(remove_string, sizeof(remove_string), "$DiscUser %s|", user->nick);
 		  send_to_non_humans(remove_string, FORKED, NULL);
-	       }	     
+	       }
 	  }
-	
+
 	add_human_to_hash(user);
-	
+
 	/* Add to user list */
 	if(add_user_to_list(user) == 0)
 	  {
@@ -1711,10 +1712,10 @@ int my_pass(char *buf, struct user_t *user)
 	logprintf(1, "OP Admin %s logged in from %s\n", user->nick, user->hostname);
 	
 	/* Send the Hello and op list to all users */
-	sprintf(hello_buf, "$Hello %s|", user->nick);
+	snprintf(hello_buf, sizeof(hello_buf), "$Hello %s|", user->nick);
 	if((op_list = get_op_list()) == NULL)
 	  return 0;
-	
+
 	while(sock != NULL)
 	  {
 	     if(((sock->user->type & (REGULAR | REGISTERED | OP | OP_ADMIN | FORKED)) != 0)
@@ -1744,27 +1745,28 @@ int my_pass(char *buf, struct user_t *user)
 	/* User is OP */
 	
 	if((user_list_nick = check_if_on_user_list(user->nick)) != NULL)
-	  {	
+	  {
 	     remove_user_from_list(user->nick);
-	     sprintf(quit_string, "$Quit %s|", user_list_nick);
+	     snprintf(quit_string, sizeof(quit_string), "$Quit %s|", user_list_nick);
 	     send_to_humans(quit_string, REGULAR | REGISTERED | OP | OP_ADMIN,
 			    user);
 	     send_to_non_humans(quit_string, FORKED, NULL);
 	     if((d_user = get_human_user(user->nick)) != NULL)
 	       {
 		  remove_human_from_hash(user->nick);
-		  strcpy(d_user->nick, "removed user");
+		  strncpy(d_user->nick, "removed user", MAX_NICK_LEN);
+		  d_user->nick[MAX_NICK_LEN] = '\0';
 		  d_user->rem = REMOVE_USER;
-	       }   
+	       }
 	     else
-	       {		  
-		  sprintf(remove_string, "$DiscUser %s|", user->nick);
+	       {
+		  snprintf(remove_string, sizeof(remove_string), "$DiscUser %s|", user->nick);
 		  send_to_non_humans(remove_string, FORKED, NULL);
-	       }	     
+	       }
 	  }
-	
+
 	add_human_to_hash(user);
-	
+
 	/* Add to user list */
 	if(add_user_to_list(user) == 0)
 	  {
@@ -1790,7 +1792,7 @@ int my_pass(char *buf, struct user_t *user)
 	logprintf(1, "OP %s logged in from %s\n", user->nick, user->hostname);
 	
 	/* Send the Hello and op list to all users */
-	sprintf(hello_buf, "$Hello %s|", user->nick);
+	snprintf(hello_buf, sizeof(hello_buf), "$Hello %s|", user->nick);
 	op_list = get_op_list();
 	sock = human_sock_list;
 	while(sock != NULL)
@@ -1823,38 +1825,39 @@ int my_pass(char *buf, struct user_t *user)
 	/* User is registered */
 	
 	if((user_list_nick = check_if_on_user_list(user->nick)) != NULL)
-	  {	
+	  {
 	     remove_user_from_list(user->nick);
-	     sprintf(quit_string, "$Quit %s|", user_list_nick);
+	     snprintf(quit_string, sizeof(quit_string), "$Quit %s|", user_list_nick);
 	     send_to_humans(quit_string, REGULAR | REGISTERED | OP | OP_ADMIN,
 			    user);
 	     send_to_non_humans(quit_string, FORKED, NULL);
 	     if((d_user = get_human_user(user->nick)) != NULL)
-	       {		 
+	       {
 		  remove_human_from_hash(user->nick);
-		  strcpy(d_user->nick, "removed user");
+		  strncpy(d_user->nick, "removed user", MAX_NICK_LEN);
+		  d_user->nick[MAX_NICK_LEN] = '\0';
 		  d_user->rem = REMOVE_USER;
-	       }   
+	       }
 	     else
-	       {		  
-		  sprintf(remove_string, "$DiscUser %s|", user->nick);
+	       {
+		  snprintf(remove_string, sizeof(remove_string), "$DiscUser %s|", user->nick);
 		  send_to_non_humans(remove_string, FORKED, NULL);
-	       }	     
+	       }
 	  }
-	
+
 	add_human_to_hash(user);
-	
+
 	if(add_user_to_list(user) == 0)
 	  {
 	     increase_user_list();
 	     add_user_to_list(user);
-	  }	
+	  }
 	user->type = REGISTERED;
 	hub_mess(user, LOGGED_IN_MESS);
 	if(welcome_mess(user) == -1)
 	  return 0;
 	logprintf(1, "Registered user %s logged in from %s\n", user->nick, user->hostname);
-	sprintf(hello_buf, "$Hello %s|", user->nick);
+	snprintf(hello_buf, sizeof(hello_buf), "$Hello %s|", user->nick);
 	sock = human_sock_list;
 	while(sock != NULL)
 	  {
@@ -1897,7 +1900,7 @@ int my_pass(char *buf, struct user_t *user)
 	if(welcome_mess(user) == -1)
 	  return 0;
 	logprintf(1, "Regular user %s logged in from %s\n", user->nick, user->hostname);
-	sprintf(hello_buf, "$Hello %s|", user->nick);
+	snprintf(hello_buf, sizeof(hello_buf), "$Hello %s|", user->nick);
 	sock = human_sock_list;
 	while(sock != NULL)
 	  {
@@ -1996,7 +1999,7 @@ void kick(char *buf, struct user_t *user, int tempban)
 
 	if((kick_bantime > 0) && (tempban != 0))
 	  {
-	     sprintf(ban_command, "%s %dm", host, kick_bantime);
+	     snprintf(ban_command, sizeof(ban_command), "%s %dm", host, kick_bantime);
 	     ballow(ban_command, BAN, user);
 	  }
 	
@@ -2076,7 +2079,8 @@ int check_admin_pass(char *buf, struct user_t *user)
 	send_to_user("\r\nPassword accepted\r\n", user);
 	user->type = ADMIN;
 	remove_human_from_hash(user->nick);
-	strcpy(user->nick, "Administrator");
+	strncpy(user->nick, "Administrator", MAX_NICK_LEN);
+	user->nick[MAX_NICK_LEN] = '\0';
 	add_human_to_hash(user);
 	logprintf(1, "%s logged in from %s.\n", user->nick, user->hostname);
      }
@@ -2933,11 +2937,11 @@ void op_force_move(char *buf, struct user_t *user)
 	if(to_user->share > 0)
 	  add_total_share(-to_user->share);
 	
-	sprintf(quit_string, "$Quit %s|", to_user->nick);
-	send_to_humans(quit_string, REGULAR | REGISTERED | OP 
+	snprintf(quit_string, sizeof(quit_string), "$Quit %s|", to_user->nick);
+	send_to_humans(quit_string, REGULAR | REGISTERED | OP
 		       | OP_ADMIN, to_user);
 	send_to_non_humans(quit_string, FORKED, NULL);
-#ifdef HAVE_PERL		       
+#ifdef HAVE_PERL
 	command_to_scripts("$Script user_disconnected %c%c", '\005', '\005');
 	non_format_to_scripts(to_user->nick);
 	command_to_scripts("|");		       
@@ -2953,8 +2957,8 @@ void redirect_all(char *buf, struct user_t *user)
 {
    char move_string[MAX_HOST_LEN+20];
    
-   sprintf(move_string, "$ForceMove %s", buf);
- 
+   snprintf(move_string, sizeof(move_string), "$ForceMove %s", buf);
+
    send_to_humans(move_string, REGULAR | REGISTERED | OP, user);
    remove_all(UNKEYED | NON_LOGGED | REGULAR | REGISTERED | OP, 1, 1);
    send_to_non_humans(move_string, FORKED, user);
@@ -3064,7 +3068,8 @@ void up_cmd(char *buf, int port)
 		  return;
 	       }
 			       	     
-	     strcpy(user->hostname, ip);
+	     strncpy(user->hostname, ip, MAX_HOST_LEN);
+	     user->hostname[MAX_HOST_LEN] = '\0';
 	     user->type = LINKED;
 	     user->timeout = 1;
 	     
@@ -3156,7 +3161,7 @@ void get_host(char *buf, struct user_t *user, int type)
 	     return;
 	  }
 	in.s_addr = *((long unsigned *)host->h_addr);
-	sprintf(temp_host, "%s", inet_ntoa(in));
+	snprintf(temp_host, sizeof(temp_host), "%s", inet_ntoa(in));
 	if(user->type == ADMIN)
 	  uprintf(user, "\r\n%s has ip: %s\r\n", nick, temp_host);
 	else
@@ -3424,20 +3429,21 @@ void send_mass_message(char *buffy, struct user_t *user)
    int spaces=0, entries=0;
    int i;
    
-   if((sendbuf = malloc(sizeof(char) * (50 + MAX_NICK_LEN + strlen(buffy)))) == NULL)
+   size_t sendbuf_size = 50 + MAX_NICK_LEN + strlen(buffy);
+   if((sendbuf = malloc(sizeof(char) * sendbuf_size)) == NULL)
      {
 	logprintf(1, "Error - in send_mass_message()/malloc(): ");
 	logerror(1, errno);
 	quit = 1;
 	return;
      }
-   
+
    sem_take(user_list_sem);
-   
+
    /* Attach to the shared segment */
    if((buf = shmat(get_user_list_shm_id(), NULL, 0))
       == (char *)-1)
-     {	
+     {
 	logprintf(1, "Error - In send_mass_message()/shmat(): ");
 	logerror(1, errno);
 	sem_give(user_list_sem);
@@ -3461,7 +3467,7 @@ void send_mass_message(char *buffy, struct user_t *user)
 	if(*bufp != '\0')
 	  {	     
 	     sscanf(bufp, "%50s %120s", temp_nick, temp_host);
-	     sprintf(sendbuf, "$To: %s From: Hub-Mass-Message $<Hub-Mass-Message> %s", temp_nick, buffy);
+	     snprintf(sendbuf, sendbuf_size, "$To: %s From: Hub-Mass-Message $<Hub-Mass-Message> %s", temp_nick, buffy);
 	     to_from(sendbuf, user);
 	  }
 	bufp += USER_LIST_ENT_SIZE;

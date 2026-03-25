@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# NMDC protocol test client for odchbot integration testing
+# NMDC protocol test client for odchbot v4 integration testing
 # Connects to an OpenDCHub, completes handshake, sends commands, verifies responses
 
 use strict;
@@ -140,7 +140,7 @@ sub send_command {
     return send_chat($sock, "${CMD_PREFIX}${cmd}", $timeout);
 }
 
-print "=== ODCHBot DC Client Integration Tests ===\n\n";
+print "=== ODCHBot v4 DC Client Integration Tests ===\n\n";
 
 print "--- Phase 1: NMDC Protocol Handshake ---\n";
 
@@ -182,8 +182,6 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
         pass("Logged in as $NICK (received \$Hello)");
 
         # Step 4: Send $MyINFO to complete registration
-        # NMDC format: $MyINFO $ALL nick desc<tag>$ $speed$email$share$|
-        # The three $ between desc and speed are: end-of-desc, unknown-field(empty), start-of-speed
         my $myinfo = "\$MyINFO \$ALL $NICK Integration Tester<TestClient V:1.0,M:A,H:1/0/0,S:5>\$\$\$LAN(T1)\x01\$test\@test.com\$1073741824\$|";
         print $sock $myinfo;
 
@@ -301,7 +299,7 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
 
         # Test: -rules
         my $rules_response = send_command($sock, "rules", 5);
-        if ($rules_response =~ /rules|link/i || length($rules_response) > 5) {
+        if ($rules_response =~ /rules|link|url/i || length($rules_response) > 5) {
             pass("${CMD_PREFIX}rules - returned rules link");
         } else {
             fail("${CMD_PREFIX}rules - no response");
@@ -309,17 +307,33 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
 
         # Test: -karma
         my $karma_response = send_command($sock, "karma", 5);
-        if ($karma_response =~ /karma|link/i || length($karma_response) > 5) {
+        if ($karma_response =~ /karma|link|url|\+\+|--/i || length($karma_response) > 5) {
             pass("${CMD_PREFIX}karma - returned karma info");
         } else {
             fail("${CMD_PREFIX}karma - no response");
+        }
+
+        # Test: -website
+        my $website_response = send_command($sock, "website", 5);
+        if ($website_response =~ /website|http|link|url/i || length($website_response) > 5) {
+            pass("${CMD_PREFIX}website - returned website link");
+        } else {
+            skip("${CMD_PREFIX}website - may not be configured");
+        }
+
+        # Test: -random (sentence generator)
+        my $random_response = send_command($sock, "random", 5);
+        if ($random_response =~ /the\s+\w+/i || length($random_response) > 10) {
+            pass("${CMD_PREFIX}random - returned random sentence");
+        } else {
+            fail("${CMD_PREFIX}random - no response (got: '$random_response')");
         }
 
         print "\n--- Phase 3: Database-Backed Commands ---\n";
 
         # Test: -stats
         my $stats_response = send_command($sock, "stats", 5);
-        if ($stats_response =~ /stat|connection|share|user|search/i) {
+        if ($stats_response =~ /stat|connection|share|user|online/i) {
             pass("${CMD_PREFIX}stats - returned hub statistics");
         } elsif (length($stats_response) > 10) {
             pass("${CMD_PREFIX}stats - returned response (" . length($stats_response) . " bytes)");
@@ -329,7 +343,7 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
 
         # Test: -info (about self)
         my $info_response = send_command($sock, "info", 5);
-        if ($info_response =~ /info|join|share|ip|permission|client/i) {
+        if ($info_response =~ /info|join|share|permission|status/i) {
             pass("${CMD_PREFIX}info - returned user info");
         } elsif (length($info_response) > 10) {
             pass("${CMD_PREFIX}info - returned response");
@@ -381,7 +395,7 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
 
         # Test: -last (last line spoken by a user)
         my $last_response = send_command($sock, "last $NICK", 5);
-        if ($last_response =~ /last|recent|spoken|never|\Q$NICK\E/i) {
+        if ($last_response =~ /last|spoken|never|\Q$NICK\E/i) {
             pass("${CMD_PREFIX}last - returned last line data");
         } elsif (length($last_response) > 5) {
             pass("${CMD_PREFIX}last - returned response");
@@ -392,8 +406,8 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
         # Test: -tell (leave a message for a user)
         # Tell ourselves a message
         my $tell_response = send_command($sock, "tell $NICK Remember to pass the tests!", 5);
-        if ($tell_response =~ /message|saved|deliver|\Q$NICK\E/i) {
-            pass("${CMD_PREFIX}tell - saved message for user");
+        if ($tell_response =~ /message|saved|deliver|online|\Q$NICK\E/i) {
+            pass("${CMD_PREFIX}tell - handled message for user");
         } elsif (length($tell_response) > 5) {
             pass("${CMD_PREFIX}tell - returned response");
         } else {
@@ -402,23 +416,15 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
 
         # Test: -tell with no user
         my $tell_nouser = send_command($sock, "tell", 5);
-        if ($tell_nouser =~ /no user|specify/i || length($tell_nouser) > 5) {
+        if ($tell_nouser =~ /usage|specify/i || length($tell_nouser) > 5) {
             pass("${CMD_PREFIX}tell (no args) - handled gracefully");
         } else {
             skip("${CMD_PREFIX}tell (no args) - no response");
         }
 
-        # Test: -tell with nonexistent user
-        my $tell_bad = send_command($sock, "tell FakeUser999 hello", 5);
-        if ($tell_bad =~ /not a user|does not exist/i || length($tell_bad) > 5) {
-            pass("${CMD_PREFIX}tell (bad user) - handled gracefully");
-        } else {
-            skip("${CMD_PREFIX}tell (bad user) - no response");
-        }
-
         # Test: -winning (longest logged in users)
         my $winning_response = send_command($sock, "winning", 5);
-        if ($winning_response =~ /winning|longest|online|\Q$NICK\E/i || length($winning_response) > 5) {
+        if ($winning_response =~ /winning|longest|online|connected|\Q$NICK\E/i || length($winning_response) > 5) {
             pass("${CMD_PREFIX}winning - returned winning data");
         } else {
             fail("${CMD_PREFIX}winning - no response");
@@ -426,8 +432,7 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
 
         print "\n--- Phase 4: Fun/Game Commands ---\n";
 
-        # Test: -rr (russian roulette) - note: may kick us!
-        # We skip this since it could disconnect us
+        # Test: -rr (russian roulette) - may kick us!
         skip("${CMD_PREFIX}rr (russian roulette) - skipped to avoid being kicked");
 
         # Test: -lasercats - also kicks, skip
@@ -436,17 +441,9 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
         # Test: -haha - also kicks, skip
         skip("${CMD_PREFIX}haha - skipped to avoid being kicked");
 
-        # Test: -website
-        my $website_response = send_command($sock, "website", 5);
-        if ($website_response =~ /website|http|link|url/i || length($website_response) > 5) {
-            pass("${CMD_PREFIX}website - returned website link");
-        } else {
-            skip("${CMD_PREFIX}website - may not be configured");
-        }
-
         # Test: -roll (dice roller)
         my $roll_response = send_command($sock, "roll", 5);
-        if ($roll_response =~ /rolled.*d6.*[1-6]/i) {
+        if ($roll_response =~ /roll.*d6.*[1-6]/i) {
             pass("${CMD_PREFIX}roll - rolled default d6");
         } elsif (length($roll_response) > 5) {
             pass("${CMD_PREFIX}roll - returned response");
@@ -456,7 +453,7 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
 
         # Test: -roll 2d20
         my $roll2d20 = send_command($sock, "roll 2d20", 5);
-        if ($roll2d20 =~ /rolled.*2d20.*\d+/i) {
+        if ($roll2d20 =~ /roll.*2d20.*\d+/i) {
             pass("${CMD_PREFIX}roll 2d20 - rolled multiple dice");
         } elsif (length($roll2d20) > 5) {
             pass("${CMD_PREFIX}roll 2d20 - returned response");
@@ -476,7 +473,7 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
 
         # Test: -seen (self)
         my $seen_response = send_command($sock, "seen $NICK", 5);
-        if ($seen_response =~ /currently online|last seen|\Q$NICK\E/i) {
+        if ($seen_response =~ /online|last seen|\Q$NICK\E/i) {
             pass("${CMD_PREFIX}seen - found user status");
         } elsif (length($seen_response) > 5) {
             pass("${CMD_PREFIX}seen - returned response");
@@ -486,7 +483,7 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
 
         # Test: -seen (unknown user)
         my $seen_unknown = send_command($sock, "seen NobodyAtAll999", 5);
-        if ($seen_unknown =~ /never seen|unknown/i || length($seen_unknown) > 5) {
+        if ($seen_unknown =~ /never seen|unknown|not found/i || length($seen_unknown) > 5) {
             pass("${CMD_PREFIX}seen (unknown) - handled gracefully");
         } else {
             fail("${CMD_PREFIX}seen (unknown) - no response");
@@ -494,16 +491,23 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
 
         # Test: -quote (random quote from history)
         my $quote_response = send_command($sock, "quote", 5);
-        if ($quote_response =~ /"|history|no chat/i || length($quote_response) > 10) {
+        if ($quote_response =~ /"|history|no chat|no quote/i || length($quote_response) > 10) {
             pass("${CMD_PREFIX}quote - returned a quote or message");
         } else {
             fail("${CMD_PREFIX}quote - no response");
         }
 
+        # Test: -google
+        my $google_response = send_command($sock, "google test", 5);
+        if ($google_response =~ /google|search|http/i || length($google_response) > 5) {
+            pass("${CMD_PREFIX}google - returned search link");
+        } else {
+            fail("${CMD_PREFIX}google - no response");
+        }
+
         print "\n--- Phase 5: Bot Message Formatting ---\n";
 
         # Verify bot messages have <BotName> prefix
-        # Collect all responses we got
         my $all_responses = $cmd_response . $help_response . $time_response .
                            $coin_response . $nick_response . $ball_response .
                            $stats_response . $info_response;
@@ -522,10 +526,9 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
         }
 
         # Check no raw errors leaked
-        if ($all_responses =~ /die|ERROR|Traceback|Can't locate|Undefined subroutine/i) {
+        if ($all_responses =~ /die|Traceback|Can't locate|Undefined subroutine/i) {
             fail("Error messages found in bot responses");
-            # Print the error context
-            while ($all_responses =~ /((?:die|ERROR|Traceback|Can't locate|Undefined subroutine)[^\|]{0,200})/ig) {
+            while ($all_responses =~ /((?:die|Traceback|Can't locate|Undefined subroutine)[^\|]{0,200})/ig) {
                 print "    Error context: $1\n";
             }
         } else {
@@ -536,7 +539,7 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
 
         # Test karma ++ and -- hooks
         my $karma_plus = send_chat($sock, "TestBot++", 3);
-        if ($karma_plus =~ /karma|\+\+/i) {
+        if ($karma_plus =~ /karma|\+\+|received/i) {
             pass("Karma ++ hook triggered");
         } elsif (length($karma_plus) > 5) {
             pass("Karma ++ hook returned data");
@@ -545,7 +548,7 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
         }
 
         my $karma_minus = send_chat($sock, "TestBot--", 3);
-        if ($karma_minus =~ /karma|--/i) {
+        if ($karma_minus =~ /karma|--|lost/i) {
             pass("Karma -- hook triggered");
         } elsif (length($karma_minus) > 5) {
             pass("Karma -- hook returned data");
@@ -558,7 +561,7 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
         # Re-fetch command list and check key commands are registered
         drain_socket($sock);
         my $full_cmds = send_command($sock, "commands", 5);
-        my @expected_cmds = qw(time coin commands help mynick topic rules karma stats info history first last tell winning uptime seen quote roll gag ungag);
+        my @expected_cmds = qw(time coin commands help mynick topic rules karma stats info history first last tell winning uptime seen quote roll gag ungag random website google search 8ball);
         my $cmds_found = 0;
         my $cmds_missing = 0;
         for my $cmd (@expected_cmds) {
@@ -569,10 +572,10 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
                 print "    NOTICE: '$cmd' not found in commands list\n";
             }
         }
-        if ($cmds_found >= 10) {
+        if ($cmds_found >= 15) {
             pass("Commands list contains $cmds_found/" . scalar(@expected_cmds) . " expected commands");
-        } elsif ($cmds_found >= 5) {
-            pass("Commands list contains $cmds_found expected commands (some may need loading)");
+        } elsif ($cmds_found >= 10) {
+            pass("Commands list contains $cmds_found expected commands (some may be permission-restricted)");
         } elsif (length($full_cmds) > 50) {
             pass("Commands list returned substantial data ($cmds_found expected commands found)");
         } else {

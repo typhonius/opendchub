@@ -26,9 +26,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#if HAVE_MALLOC_H
-# include <malloc.h>
-#endif
 #include <ctype.h>
 #include <netdb.h>
 #include <sys/socket.h>
@@ -200,7 +197,8 @@ int read_config(void)
 		       fclose(fp);
 		       return -1;
 		    }
-		  strcpy(hub_full_mess, strchr(line + i, '"') + 1);
+		  strncpy(hub_full_mess, strchr(line + i, '"') + 1, strlen(line+i+1));
+		  hub_full_mess[strlen(line+i+1)] = '\0';
 		  while((line[strlen(line) - 1] != '"') && (fgets(line, 1023, fp) != NULL))
 		    {		
 		       trim_string(line);
@@ -1004,38 +1002,39 @@ int check_if_banned(struct user_t *user, int type)
    char path[MAX_FDP_LEN+1];
    char line[1024];
    char ban_host[MAX_HOST_LEN+1];
-   char *string_ip = NULL;
+   char ip_buf[INET_ADDRSTRLEN];
+   const char *string_ip = NULL;
    unsigned long userip = 0;
    unsigned long fileip = 0;
    int byte1, byte2, byte3, byte4, mask;
    time_t ban_time;
    time_t now_time;
-   
+
    if(type == BAN)
 	snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, BAN_FILE);
    else if(type == NICKBAN)
 	snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, NICKBAN_FILE);
    else
 	return -1;
-   	
+
    while(((fd = open(path, O_RDONLY)) < 0) && (errno == EINTR))
-     logprintf(1, "Error - In check_if_banned()/open(): Interrupted system call. Trying again.\n");   
-   
+     logprintf(1, "Error - In check_if_banned()/open(): Interrupted system call. Trying again.\n");
+
    if(fd < 0)
      {
 	logprintf(1, "Error - In check_if_banned()/open(): ");
 	logerror(1, errno);
-	return -1;	
+	return -1;
      }
-   
+
    /* Set the lock */
    if(set_lock(fd, F_RDLCK) == 0)
      {
 	logprintf(1, "Error - In check_if_banned(): Couldn't set file lock\n");
 	close(fd);
 	return -1;
-     }   
-   
+     }
+
    if((fp = fdopen(fd, "r")) == NULL)
      {
 	logprintf(1, "Error - In check_if_banned()/fdopen(): ");
@@ -1044,18 +1043,19 @@ int check_if_banned(struct user_t *user, int type)
 	close(fd);
 	return -1;
      }
-   
+
    now_time = time(NULL);
-   
+
    if(type == BAN)
-     {	
-	if((string_ip = ip_to_string(user->ip)) == NULL)
+     {
+	string_ip = ip_to_string(user->ip, ip_buf, sizeof(ip_buf));
+	if(string_ip == NULL)
 	  {
 	     set_lock(fd, F_UNLCK);
-	     
+
 	     while(((erret = fclose(fp)) != 0) && (errno == EINTR))
 	       logprintf(1, "Error - In check_if_banned()/fclose(): Interrupted system call. Trying again.\n");
-	     
+
 	     if(erret != 0)
 	       {
 		  logprintf(1, "Error - In check_if_banned()/fclose(): ");
@@ -1199,25 +1199,26 @@ int check_if_allowed(struct user_t *user)
    char path[MAX_FDP_LEN+1];
    char line[1024];
    char allow_host[MAX_HOST_LEN+1];
-   char *string_ip = NULL;
+   char ip_buf[INET_ADDRSTRLEN];
+   const char *string_ip = NULL;
    unsigned long userip = 0;
    unsigned long fileip = 0;
    int byte1, byte2, byte3, byte4, mask;
    time_t allow_time;
    time_t now_time;
-   
+
    snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, ALLOW_FILE);
-   
+
    while(((fd = open(path, O_RDONLY)) < 0) && (errno == EINTR))
-     logprintf(1, "Error - In check_if_allowed()/open(): Interrupted system call. Trying again.\n");   
-   
+     logprintf(1, "Error - In check_if_allowed()/open(): Interrupted system call. Trying again.\n");
+
    if(fd < 0)
      {
 	logprintf(1, "Error - In check_if_allowed()/open(): ");
 	logerror(1, errno);
-	return -1;	
+	return -1;
      }
-   
+
    /* Set the lock */
    if(set_lock(fd, F_RDLCK) == 0)
      {
@@ -1225,7 +1226,7 @@ int check_if_allowed(struct user_t *user)
 	close(fd);
 	return -1;
      }
-   
+
    if((fp = fdopen(fd, "r")) == NULL)
      {
 	logprintf(1, "Error - In check_if_allowed()/fdopen(): ");
@@ -1234,10 +1235,11 @@ int check_if_allowed(struct user_t *user)
 	close(fd);
 	return -1;
      }
-   
+
    now_time = time(NULL);
-   
-   if((string_ip = ip_to_string(user->ip)) == NULL)
+
+   string_ip = ip_to_string(user->ip, ip_buf, sizeof(ip_buf));
+   if(string_ip == NULL)
      {
 	set_lock(fd, F_UNLCK);
 	
@@ -2088,7 +2090,7 @@ int add_reg_user(char *buf, struct user_t *user)
    
    encrypt_pass(pass);
 
-   sprintf(line, "%s %s %d", nick, pass, type);
+   snprintf(line, sizeof(line), "%s %s %d", nick, pass, type);
    
    ret = add_line_to_file(line, path);
    
@@ -2130,7 +2132,7 @@ int add_linked_hub(char *buf)
      return -1;
    
    /* And add the hub */
-   sprintf(line, "%s %d", ip, port);
+   snprintf(line, sizeof(line), "%s %d", ip, port);
    
    ret = add_line_to_file(line, path);
    
@@ -2164,8 +2166,8 @@ int remove_linked_hub(char *buf)
      return 2;
    
    ip_len = strlen(ip);
-  
-   sprintf(line, "%s %d", ip, port);
+
+   snprintf(line, sizeof(line), "%s %d", ip, port);
    
    return remove_line_from_file(line, path, port);
 }
@@ -2196,8 +2198,8 @@ int init_dirs(void)
    snprintf( config_dir, MAX_FDP_LEN, "%s/.opendchub", path );
 
    sprintfa(path, MAX_FDP_LEN + 1, "/tmp");
-   sprintf(un_sock_path, "%s/%s", path, UN_SOCK_NAME);
-   sprintf(script_dir, "%s/%s", config_dir, SCRIPT_DIR);
+   snprintf(un_sock_path, MAX_FDP_LEN + 1, "%s/%s", path, UN_SOCK_NAME);
+   snprintf(script_dir, sizeof(script_dir), "%s/%s", config_dir, SCRIPT_DIR);
    mkdir(config_dir, 0700);
    mkdir(path, 0700);
    mkdir(script_dir, 0700);
@@ -2578,7 +2580,7 @@ int remove_line_from_file(char *line, char *file, int port)
 
    sscanf(line, "%200s", word);
    
-   sprintf(temp, "%c", '\0');
+   snprintf(temp, 2, "%c", '\0');
 
    while(((fd = open(file, O_RDWR)) < 0) && (errno == EINTR))
      logprintf(1, "Error - In remove_line_from_file()/open(): Interrupted system call. Trying again.\n");   
@@ -2630,15 +2632,15 @@ int remove_line_from_file(char *line, char *file, int port)
 	       {		  
 		  if((temp = realloc(temp, sizeof(char)
 				     * (strlen(temp) + strlen(fileline) + 1))) == NULL)
-		    {	
+		    {
 		       logprintf(1, "Error - In remove_line_from_file()/realloc(): ");
 		       logerror(1, errno);
 		       quit = 1;
 		       set_lock(fd, F_UNLCK);
-		       fclose(fp);		       
+		       fclose(fp);
 		       return -1;
-		    }		  
-		  strcat(temp, fileline);
+		    }
+		  snprintf(temp + strlen(temp), strlen(fileline) + 1, "%s", fileline);
 	       }	     
 	     rewind(fp);
 	     
@@ -2738,8 +2740,7 @@ int remove_exp_from_file(time_t now_time, char *file)
 	return -1;
      }   
 
-   strcpy(newfile, file);
-   strcat(newfile, "1");
+   snprintf(newfile, strlen(file) + 2, "%s1", file);
    
    while(((fd = open(file, O_RDWR)) < 0) && (errno == EINTR))
      logprintf(1, "Error - In remove_exp_from_file()/open(): Interrupted system call. Trying again.\n");
@@ -2896,7 +2897,7 @@ int my_scandir(char *dirname, char *namelist[])
 	     quit = 1;
 	     return 0;
 	  }
-	sprintf(namelist[i], "%s/%s", dirname, dent->d_name);
+	snprintf(namelist[i], strlen(dirname) + strlen(dent->d_name) + 2, "%s/%s", dirname, dent->d_name);
 	i++;
      }
    closedir(dp);
@@ -2959,15 +2960,15 @@ int add_perm(char *buf, struct user_t *user)
 	
 	if(old_perm > 0)
 	  {
-	     sprintf(line, "%s", nick);
+	     snprintf(line, sizeof(line), "%s", nick);
 	     ret = remove_line_from_file(line, path, 0);
 	     if(ret != 1)
 	       return ret;
 	  }
-	
+
 	old_perm = old_perm | new_perm;
-	
-	sprintf(line, "%s %d", nick, old_perm);
+
+	snprintf(line, sizeof(line), "%s %d", nick, old_perm);
 	
 	ret = add_line_to_file(line, path);    
 	
@@ -3031,16 +3032,16 @@ int remove_perm(char *buf, struct user_t *user)
 	if((old_perm & del_perm) == 0)
 	  return 3;
 	
-	sprintf(line, "%s", nick);
+	snprintf(line, sizeof(line), "%s", nick);
 	ret = remove_line_from_file(line, path, 0);
 	if(ret != 1)
 	  return ret;
-	
+
 	old_perm = (old_perm ^ del_perm);
-	
+
 	if(old_perm > 0)
 	  {
-	     sprintf(line, "%s %d", nick, old_perm);
+	     snprintf(line, sizeof(line), "%s %d", nick, old_perm);
 	     ret = add_line_to_file(line, path);
 	  }
 	

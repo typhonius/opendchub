@@ -1,5 +1,5 @@
 /*  Open DC Hub - A Linux/Unix version of the Direct Connect hub.
- *  Copyright (C) 2002,2003  Jonatan Nilsson 
+ *  Copyright (C) 2002,2003  Jonatan Nilsson
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -30,6 +30,6 @@ void   add_socket(struct user_t *user);
 void   remove_socket(struct user_t *user);
 void   send_to_non_humans(char *buf, int type, struct user_t *ex_user);
 void   send_to_humans(char *buf, int type, struct user_t *ex_user);
-char  *ip_to_string(unsigned long ip);
+const char *ip_to_string(unsigned long ip, char *buf, size_t bufsize);
 int    is_internal_address (long unsigned ip);
 void   send_to_user(char *buf, struct user_t *user);

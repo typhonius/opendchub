@@ -26,9 +26,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <netdb.h>
-#if HAVE_MALLOC_H
-# include <malloc.h>
-#endif
 #include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -81,7 +78,70 @@
 #ifndef SIGCHLD
 # define SIGCHLD SIGCLD
 #endif
-   
+
+/* Global variable definitions (declared extern in main.h) */
+pid_t  pid = 0;
+int    users_per_fork = 0;
+struct user_t *non_human_user_list = NULL;
+struct user_t **human_hash_table = NULL;
+struct sock_t *human_sock_list = NULL;
+unsigned int listening_port = 0;
+unsigned int admin_port = 0;
+BYTE   admin_localhost = 0;
+int    admin_listening_socket = 0;
+int    listening_socket = 0;
+int    listening_unx_socket = 0;
+int    listening_udp_socket = 0;
+char   hub_name[MAX_HUB_NAME+1] = {0};
+BYTE   debug = 0;
+BYTE   registered_only = 0;
+BYTE   hublist_upload = 0;
+BYTE   ban_overrides_allow = 0;
+BYTE   redir_on_min_share = 0;
+BYTE   check_key = 0;
+BYTE   reverse_dns = 0;
+BYTE   verbosity = 0;
+char   hub_description[MAX_HUB_DESC+1] = {0};
+char   public_hub_host[MAX_HOST_LEN+1] = {0};
+char   min_version[MAX_VERSION_LEN+1] = {0};
+char   hub_hostname[MAX_HOST_LEN+1] = {0};
+char   redirect_host[MAX_HOST_LEN+1] = {0};
+char   *hub_full_mess = NULL;
+int    max_users = 0;
+int    max_sockets = 0;
+long long min_share = 0;
+int    total_share_shm = 0;
+int    total_share_sem = 0;
+int    user_list_shm_shm = 0;
+int    user_list_sem = 0;
+char   admin_pass[MAX_ADMIN_PASS_LEN+1] = {0};
+char   link_pass[MAX_ADMIN_PASS_LEN+1] = {0};
+char   default_pass[MAX_ADMIN_PASS_LEN+1] = {0};
+BYTE   upload = 0;
+BYTE   quit = 0;
+BYTE   do_write = 0;
+BYTE   do_send_linked_hubs = 0;
+BYTE   do_purge_user_list = 0;
+BYTE   do_fork = 0;
+BYTE   script_reload = 0;
+char   config_dir[MAX_FDP_LEN+1] = {0};
+char   un_sock_path[MAX_FDP_LEN+1] = {0};
+char   logfile[MAX_FDP_LEN+1] = {0};
+BYTE   syslog_enable = 0;
+BYTE   syslog_switch = 0;
+BYTE   searchcheck_exclude_internal = 0;
+BYTE   searchcheck_exclude_all = 0;
+int    kick_bantime = 0;
+int    searchspam_time = 0;
+uid_t  dchub_user = 0;
+gid_t  dchub_group = 0;
+char   working_dir[MAX_FDP_LEN+1] = {0};
+time_t hub_start_time = 0;
+int    max_email_len = 0;
+int    max_desc_len = 0;
+BYTE   crypt_enable = 0;
+int    current_forked = 0;
+
 /* Set default variables, used if config does not exist or is bad */
 int set_default_vars(void)
 {
@@ -111,10 +171,10 @@ int set_default_vars(void)
 	exit(EXIT_FAILURE);
      }
    printf("Listening Port set to %u\n\n", listening_port);
-   sprintf(public_hub_host, "vandel405.dynip.com");
+   snprintf(public_hub_host, sizeof(public_hub_host), "vandel405.dynip.com");
    min_version[0] = '\0';
-   sprintf(hub_name, "Open DC Hub");
-   sprintf(hub_description, "A Unix/Linux Direct Connect Hub");
+   snprintf(hub_name, sizeof(hub_name), "Open DC Hub");
+   snprintf(hub_description, sizeof(hub_description), "A Unix/Linux Direct Connect Hub");
    if((hub_full_mess = realloc(hub_full_mess, sizeof(char) * 50)) == NULL)
      {
 	logprintf(1, "Error - In set_default_vars()/realloc(): ");
@@ -122,8 +182,8 @@ int set_default_vars(void)
 	quit = 1;
 	return 0;
      }
-   sprintf(hub_full_mess, "Sorry, this hub is full at the moment");
-   sprintf(default_pass, "");
+   snprintf(hub_full_mess, 50, "Sorry, this hub is full at the moment");
+   snprintf(default_pass, sizeof(default_pass), "");
    printf("Please, supply an admin pass for hub: ");
    scanf("%50s", admin_pass);
    printf("Your admin pass is set to %s\n\n", admin_pass);
@@ -226,7 +286,7 @@ void new_forked_process(void)
    user->rem = 0;
    user->buf = NULL;
    user->outbuf = NULL;
-   sprintf(user->hostname, "forked_process");   
+   snprintf(user->hostname, sizeof(user->hostname), "forked_process");
    memset(user->nick, 0, MAX_NICK_LEN+1);
    
    /* Add the user at the first place in the list.  */
@@ -348,7 +408,7 @@ void fork_process(void)
 	user->buf = NULL;
 	user->outbuf = NULL;
 	memset(user->nick, 0, MAX_NICK_LEN+1);
-	sprintf(user->hostname, "parent_process");
+	snprintf(user->hostname, sizeof(user->hostname), "parent_process");
 
 	if((flags = fcntl(user->sock, F_GETFL, 0)) < 0)
 	  {     
@@ -668,9 +728,9 @@ void send_user_info(struct user_t *from_user, char *to_user_nick, int all)
      }
    
    if(all != 0)
-     sprintf(send_buf, "$MyINFO $ALL ");
+     snprintf(send_buf, send_buf_size, "$MyINFO $ALL ");
    else
-     sprintf(send_buf, "$MyINFO $%s ", to_user_nick);
+     snprintf(send_buf, send_buf_size, "$MyINFO $%s ", to_user_nick);
    
    sprintfa(send_buf, send_buf_size, "%s", from_user->nick);
    sprintfa(send_buf, send_buf_size, " ");
@@ -759,7 +819,7 @@ void hub_mess(struct user_t *user, int mess_type)
 	     return;
 	  }
 
-	sprintf(send_string, "$HubName %s|", hub_name);
+	snprintf(send_string, 110, "$HubName %s|", hub_name);
 	sprintfa(send_string, 110, "<Hub-Security> This hub is running version %s of Open DC Hub.|", VERSION);
 	break;
 	
@@ -773,7 +833,7 @@ void hub_mess(struct user_t *user, int mess_type)
 	     quit = 1;
 	     return;
 	  }
-	sprintf(send_string, "<Hub-Security> %s|", 
+	snprintf(send_string, 15 + strlen(hub_full_mess) + 3, "<Hub-Security> %s|",
 		 hub_full_mess);
 	break;
 	
@@ -786,7 +846,7 @@ void hub_mess(struct user_t *user, int mess_type)
 	     return;
 	  }
 	
-	sprintf(send_string, "<Hub-Security> Your IP or Hostname is banned|");
+	snprintf(send_string, 50, "<Hub-Security> Your IP or Hostname is banned|");
 	break;
 	
       case GET_PASS_MESS:
@@ -798,7 +858,7 @@ void hub_mess(struct user_t *user, int mess_type)
 	     return;
 	  }
 	
-	sprintf(send_string, "<Hub-Security> Your nickname is registered, please supply a password.|$GetPass|");
+	snprintf(send_string, 100, "<Hub-Security> Your nickname is registered, please supply a password.|$GetPass|");
 	break;
 
       case GET_PASS_MESS2:
@@ -810,7 +870,7 @@ void hub_mess(struct user_t *user, int mess_type)
 	     return;
 	  }
 
-	sprintf(send_string, "<Hub-Security> Password required to enter hub.|$GetPass|");
+	snprintf(send_string, 100, "<Hub-Security> Password required to enter hub.|$GetPass|");
 	break;
 	
       case LOGGED_IN_MESS:
@@ -822,7 +882,7 @@ void hub_mess(struct user_t *user, int mess_type)
 	     quit = 1;
 	     return;
 	  }
-	sprintf(send_string, "<Hub-Security> Logged in.|$Hello %s|", user->nick); 
+	snprintf(send_string, 60 + strlen(user->nick), "<Hub-Security> Logged in.|$Hello %s|", user->nick);
 	break;
 	
       case OP_LOGGED_IN_MESS:
@@ -833,7 +893,7 @@ void hub_mess(struct user_t *user, int mess_type)
 	     quit = 1;
 	     return;
 	  }
-	sprintf(send_string, "$LogedIn %s|", user->nick); 
+	snprintf(send_string, 15 + strlen(user->nick), "$LogedIn %s|", user->nick);
 	break;
 	
       case BAD_PASS_MESS:
@@ -845,7 +905,7 @@ void hub_mess(struct user_t *user, int mess_type)
 	     quit = 1;
 	     return;
 	  }
-	sprintf(send_string, "$BadPass|<Hub-Security> That password was incorrect.|"); 
+	snprintf(send_string, 60, "$BadPass|<Hub-Security> That password was incorrect.|");
 	break;
 	
       case HELLO_MESS:
@@ -857,7 +917,7 @@ void hub_mess(struct user_t *user, int mess_type)
 	     quit = 1;
 	     return;
 	  }
-	sprintf(send_string, "$Hello %s|", user->nick); 
+	snprintf(send_string, strlen(user->nick) + 12, "$Hello %s|", user->nick);
 	break;
 	
       case INIT_ADMIN_MESS:
@@ -869,7 +929,7 @@ void hub_mess(struct user_t *user, int mess_type)
 	     quit = 1;
 	     return;
 	  }
-	sprintf(send_string, "\r\nOpen DC Hub, version %s, administrators port.\r\nAll commands begin with \'$\' and end with \'|\'.\r\nPlease supply administrators passord.\r\n", VERSION);
+	snprintf(send_string, 200, "\r\nOpen DC Hub, version %s, administrators port.\r\nAll commands begin with \'$\' and end with \'|\'.\r\nPlease supply administrators passord.\r\n", VERSION);
 	break;	
      }
 	
@@ -1621,8 +1681,8 @@ int handle_command(char *buf, struct user_t *user)
 		  if(user->type == FORKED)
 		    {		       
 		       user->type = SCRIPT;
-		       sprintf(user->hostname, "script_process");
-		       sprintf(user->nick, "script process");
+		       snprintf(user->hostname, sizeof(user->hostname), "script_process");
+		       snprintf(user->nick, sizeof(user->nick), "script process");
 		    }		  
 	       }
 	     else if(strncmp(temp, "$Script ", 8) == 0)
@@ -1702,7 +1762,8 @@ int new_human_user(int sock)
    int socknum;
    int erret;
    int flags;
-   
+   char ip_str[INET_ADDRSTRLEN];
+
    memset(&client, 0, sizeof(struct sockaddr_in));
    
    /* Get a socket for the connected user.  */
@@ -1773,8 +1834,7 @@ int new_human_user(int sock)
      }
    else
      {
-	strncpy(user->hostname, inet_ntoa(client.sin_addr), MAX_HOST_LEN);
-	user->hostname[MAX_HOST_LEN] = '\0';
+	inet_ntop(AF_INET, &client.sin_addr, user->hostname, sizeof(user->hostname));
      }
    
    /* Send to scripts */
@@ -1797,7 +1857,7 @@ int new_human_user(int sock)
    user->rem = 0;
    user->last_search = (time_t)0;
    
-   sprintf(user->nick, "Non_logged_in_user");
+   snprintf(user->nick, sizeof(user->nick), "Non_logged_in_user");
    
    /* Check if hub is full */
    if(sock == listening_socket)
@@ -1833,9 +1893,10 @@ int new_human_user(int sock)
 	if(ban_overrides_allow == 0)
 	  {
 	     if((allowret != 1) && (banret == 1))
-	       {	     
+	       {
 		  hub_mess(user, BAN_MESS);
-		  logprintf(4, "User %s from %s (%s) denied\n",  user->nick, user->hostname, inet_ntoa(client.sin_addr));
+		  inet_ntop(AF_INET, &client.sin_addr, ip_str, sizeof(ip_str));
+		  logprintf(4, "User %s from %s (%s) denied\n",  user->nick, user->hostname, ip_str);
 		  while(((erret =  close(user->sock)) != 0) && (errno == EINTR))
 		    logprintf(1, "Error - In new_human_user()/close(): Interrupted system call. Trying again.\n");	
 		  
@@ -1853,9 +1914,10 @@ int new_human_user(int sock)
 	else
 	  {	
 	     if((allowret != 1) || (banret == 1))
-	       {	     
+	       {
 		  hub_mess(user, BAN_MESS);
-		  logprintf(4, "User %s from %s (%s) denied\n",  user->nick, user->hostname, inet_ntoa(client.sin_addr));
+		  inet_ntop(AF_INET, &client.sin_addr, ip_str, sizeof(ip_str));
+		  logprintf(4, "User %s from %s (%s) denied\n",  user->nick, user->hostname, ip_str);
 		  while(((erret =  close(user->sock)) != 0) && (errno == EINTR))
 		    logprintf(1, "Error - In new_human_user()/close(): Interrupted system call. Trying again.\n");	
 		  
@@ -2139,15 +2201,15 @@ void remove_user(struct user_t *our_user, int send_quit, int remove_from_list)
      {
 	if((our_user->type & (REGULAR | REGISTERED | OP | OP_ADMIN)) != 0)
 	  {
-	     sprintf(quit_string, "$Quit %s|", our_user->nick);
+	     snprintf(quit_string, sizeof(quit_string), "$Quit %s|", our_user->nick);
 	     send_to_non_humans(quit_string, FORKED, NULL);
 	     send_to_humans(quit_string, REGULAR | REGISTERED | OP | OP_ADMIN,
 			    our_user);
 	  }
-	else if((our_user->type == SCRIPT) 
+	else if((our_user->type == SCRIPT)
 		&& (strncmp(our_user->nick, "script process", 14) != 0))
 	   {
-	     sprintf(quit_string, "$Quit %s|", our_user->nick);
+	     snprintf(quit_string, sizeof(quit_string), "$Quit %s|", our_user->nick);
 	     send_to_non_humans(quit_string, FORKED, NULL);
 	     send_to_humans(quit_string, REGULAR | REGISTERED | OP | OP_ADMIN,
 			    our_user);
@@ -2321,7 +2383,8 @@ int socket_action(struct user_t *user)
 		  quit = 1;
 		  return -1;
 	       }
-	     strcpy(command_buf, buf);
+	     strncpy(command_buf, buf, buf_len + 1);
+	     command_buf[buf_len] = '\0';
 	     if(strchr(command_buf, '|') != NULL)
 	       {
 		  if(handle_command(command_buf, user) == 0)
@@ -2343,12 +2406,14 @@ int socket_action(struct user_t *user)
 		       free(command_buf);
 		       return -1;
 		    }
-		  strcpy(user->buf, buf);
+		  strncpy(user->buf, buf, buf_len + 1);
+		  user->buf[buf_len] = '\0';
 	       }
 	     else
 	       /* If the string continues after the last '|' */
 	       {
-		  if((user->buf = malloc(sizeof(char) * strlen(strrchr(buf, '|')))) == NULL)
+		  size_t tail_len = strlen(strrchr(buf, '|') + 1);
+		  if((user->buf = malloc(sizeof(char) * (tail_len + 1))) == NULL)
 		    {
 		       logprintf(1, "Error - In socket_action()/malloc(): ");
 		       logerror(1, errno);
@@ -2356,7 +2421,8 @@ int socket_action(struct user_t *user)
 		       free(command_buf);
 		       return -1;
 		    }
-		  strcpy(user->buf, strrchr(buf, '|') + 1);
+		  strncpy(user->buf, strrchr(buf, '|') + 1, tail_len + 1);
+		  user->buf[tail_len] = '\0';
 	       }
 	  }
 	else
@@ -2369,8 +2435,7 @@ int socket_action(struct user_t *user)
 		  quit = 1;
 		  return -1;
 	       }
-	     strcpy(command_buf, user->buf);
-	     strcat(command_buf, buf);
+	     snprintf(command_buf, buf_len + strlen(user->buf) + 1, "%s%s", user->buf, buf);
 	     if(strchr(command_buf, '|') != NULL)
 	       {
 		  if(handle_command(command_buf, user) == 0)
@@ -2384,8 +2449,10 @@ int socket_action(struct user_t *user)
 	     /* If the string doesn't contain a '|' */
 	     if(strchr(buf, '|') == NULL)
 	       {
-		  if((user->buf = realloc(user->buf, sizeof(char) 
-		      * (buf_len + strlen(user->buf) + 1))) == NULL)
+		  size_t old_len = strlen(user->buf);
+		  size_t new_size = buf_len + old_len + 1;
+		  if((user->buf = realloc(user->buf, sizeof(char)
+		      * new_size)) == NULL)
 		    {
 		       logprintf(1, "Error - In socket_action()/realloc(): ");
 		       logerror(1, errno);
@@ -2393,7 +2460,8 @@ int socket_action(struct user_t *user)
 		       free(command_buf);
 		       return -1;
 		    }
-		  strcat(user->buf,  buf);
+		  strncpy(user->buf + old_len, buf, new_size - old_len);
+		  user->buf[new_size - 1] = '\0';
 		  
 		  /* The buf shouldn't be able to grow too much. If it gets 
 		   * really big, it's probably due to some kind of attack */
@@ -2408,8 +2476,9 @@ int socket_action(struct user_t *user)
 	     /* If the string continues after the last '|' */
 	     else if(strlen(strrchr(buf, '|')) > 1)
 	       {
-		  if((user->buf = realloc(user->buf, sizeof(char) 
-			   * strlen(strrchr(buf, '|')))) == NULL)
+		  size_t tail_len = strlen(strrchr(buf, '|') + 1);
+		  if((user->buf = realloc(user->buf, sizeof(char)
+			   * (tail_len + 1))) == NULL)
 		    {
 		       logprintf(1, "Error - In socket_action()/realloc(): ");
 		       logerror(1, errno);
@@ -2417,7 +2486,8 @@ int socket_action(struct user_t *user)
 		       free(command_buf);
 		       return -1;
 		    }
-		  strcpy(user->buf, strrchr(buf, '|') + 1);
+		  strncpy(user->buf, strrchr(buf, '|') + 1, tail_len + 1);
+		  user->buf[tail_len] = '\0';
    
 		  /* The buf shouldn't be able to grow too much. If it gets 
 		   * really big, it's probably due to some kind of attack.  */
@@ -2456,7 +2526,9 @@ int udp_action(void)
    char message[4096];
    struct sockaddr_in sin;
    struct user_t *user_list;
-   struct hostent *ex_user;
+   struct addrinfo hints, *res;
+   int gai_ret;
+   char ip_str[INET_ADDRSTRLEN];
    int i=0;
    
    memset(&sin, 0, sizeof(struct sockaddr_in));
@@ -2488,14 +2560,24 @@ int udp_action(void)
      {
 	if(user_list->type == LINKED)
 	  {
-	     ex_user = gethostbyname(user_list->hostname);
-	     if((((struct in_addr *)ex_user->h_addr_list[0])->s_addr == sin.sin_addr.s_addr) && (user_list->key == ntohs(sin.sin_port)))
+	     memset(&hints, 0, sizeof(hints));
+	     hints.ai_family = AF_INET;
+	     hints.ai_socktype = SOCK_DGRAM;
+	     gai_ret = getaddrinfo(user_list->hostname, NULL, &hints, &res);
+	     if(gai_ret != 0)
+	       {
+		  logprintf(1, "Error - In udp_action()/getaddrinfo(): %s\n", gai_strerror(gai_ret));
+		  user_list = user_list->next;
+		  continue;
+	       }
+	     if((((struct sockaddr_in *)res->ai_addr)->sin_addr.s_addr == sin.sin_addr.s_addr) && (user_list->key == ntohs(sin.sin_port)))
 	       {
 		  if(strncmp(message, "$Search ", 8) == 0)
 		    search(message, user_list);
 		  else if(strncmp(message, "$ConnectToMe ", 13) == 0)
 		    connect_to_me(message, user_list);
 	       }
+	     freeaddrinfo(res);
 	  }
 	user_list = user_list->next;
      }	
@@ -2503,8 +2585,9 @@ int udp_action(void)
    if((strncmp(message, "$Up ", 4) == 0) || (strncmp(message, "$UpToo ", 7) == 0))
      up_cmd(message, ntohs(sin.sin_port));
    
-   logprintf(5, "Received udp packet from %s, port %d:\n%s\n", 
-	       inet_ntoa(sin.sin_addr), ntohs(sin.sin_port), message);
+   inet_ntop(AF_INET, &sin.sin_addr, ip_str, sizeof(ip_str));
+   logprintf(5, "Received udp packet from %s, port %d:\n%s\n",
+	       ip_str, ntohs(sin.sin_port), message);
    
    /* Send event to scripts */
 #ifdef HAVE_PERL

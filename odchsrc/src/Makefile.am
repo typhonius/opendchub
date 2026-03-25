@@ -1,4 +1,5 @@
 INCLUDES = $(perl_flags)
+AM_CFLAGS = -Wall -Wextra
 
 bin_PROGRAMS = opendchub
 

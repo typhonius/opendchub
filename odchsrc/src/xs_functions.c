@@ -28,6 +28,7 @@
 #include <perl.h>
 #include <XSUB.h>
 #include <sys/shm.h>
+#include <arpa/inet.h>
 
 #include "xs_functions.h"
 #include "main.h"
@@ -66,21 +67,21 @@ XS(xs_get_type)
 XS(xs_get_ip)
 {
    struct user_t *user;
-   char ip[20];
+   char ip_buf[INET_ADDRSTRLEN];
    dXSARGS;
-   
+
    if(items != 1)
      XSRETURN_UNDEF;
-   
+
    if(!SvPOK(ST(0)))
      XSRETURN_UNDEF;
-   
+
    if((user = get_human_user(SvPVX(ST(0)))) == NULL)
      XSRETURN_UNDEF;
-   
-   sprintf(ip, "%s", ip_to_string(user->ip));
-   
-   XSRETURN_PV(ip);
+
+   ip_to_string(user->ip, ip_buf, sizeof(ip_buf));
+
+   XSRETURN_PV(ip_buf);
 }
 
 XS(xs_get_hostname)
@@ -102,7 +103,8 @@ XS(xs_get_hostname)
      XSRETURN_UNDEF;
    
    /* Get hostname.  */
-   strcpy(hostname, user->hostname);
+   strncpy(hostname, user->hostname, MAX_HOST_LEN);
+   hostname[MAX_HOST_LEN] = '\0';
    
    /* Return the hostname and exit.  */
    XSRETURN_PV(hostname);
@@ -123,7 +125,8 @@ XS(xs_get_version)
    if((user = get_human_user(SvPVX(ST(0)))) == NULL)
      XSRETURN_UNDEF;
    
-   strcpy(version, user->version);
+   strncpy(version, user->version, MAX_VERSION_LEN);
+   version[MAX_VERSION_LEN] = '\0';
    
    XSRETURN_PV(version);
 }
@@ -158,7 +161,8 @@ XS(xs_get_description)
 	XSRETURN_UNDEF;
      }
    
-   strcpy(description, user->desc);
+   strncpy(description, user->desc, strlen(user->desc));
+   description[strlen(user->desc)] = '\0';
    
    XSRETURN_PV(description);
 }
@@ -193,7 +197,8 @@ XS(xs_get_email)
 	XSRETURN_UNDEF;
      }
    
-   strcpy(email, user->email);
+   strncpy(email, user->email, strlen(user->email));
+   email[strlen(user->email)] = '\0';
    
    XSRETURN_PV(email);
 }
@@ -800,7 +805,7 @@ XS(xs_register_script_name)
 	     randpass[i] = c;
 	  }
 	randpass[10] = '\0';
-	sprintf(regstring, "$AddRegUser %s %s %d|", nick, randpass, 2);
+	snprintf(regstring, sizeof(regstring), "$AddRegUser %s %s %d|", nick, randpass, 2);
 	add_reg_user(regstring, NULL);
      }
    
