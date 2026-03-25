@@ -1,0 +1,27 @@
+# Autotools generated
+/autom4te.cache/
+/config.h
+/config.log
+/config.status
+/configure
+/aclocal.m4
+/config.guess
+/config.sub
+/install-sh
+/missing
+/mkinstalldirs
+/stamp-h
+/stamp-h.in
+/config.h.in
+/Makefile
+/Makefile.in
+/src/Makefile
+/src/Makefile.in
+
+# Build artifacts
+/src/*.o
+/src/.deps/
+/src/opendchub
+
+# OS
+.DS_Store
