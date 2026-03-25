@@ -1,26 +1,34 @@
-opendchub [![Build Status](https://travis-ci.org/odchbot/opendchub.svg?branch=master)](https://travis-ci.org/odchbot/opendchub)
-=========
+# OpenDCHub
 
-Instructions
-------------
+A Linux/Unix version of the Direct Connect hub, using the NMDC protocol.
 
-1. Download the install script from [here](https://raw.github.com/odchbot/opendchub/master/install.sh)
-1. Make the script executable
-1. Run the script
+## Building
 
-The above may be accomplished with the following one liner
-````wget -q https://raw.github.com/odchbot/opendchub/master/install.sh && chmod +x install.sh && ./install.sh````
+```bash
+autoreconf -fi
+./configure
+make
+sudo make install
+```
 
-The script above does the following:
+### Requirements
 
-1. Creates a user called 'hub'
-2. Adds hub to sudoers
-3. Downloads all ODCH prerequisites
-4. Configures stunnel to run on port 7659 & 7660
-5. Install ODCH to run on port 8145
-6. Installs [ODCHBot](https://github.com/odchbot/odchbot)
-7. Preconfigures the admin user/password (The password is hashed so pay attention when the script tells you what the details are)
+- GCC (tested with GCC 10+)
+- Perl + libperl-dev (for scripting support; use `--disable-perl` to skip)
+- autoconf, automake (for building from source)
 
-This script works best on a bare ubuntu install but may work on existing systems. It installs all the things necessary to run OpenDCHub and starts the service. Expect no support if this script doesn't work or trashes your system. It has worked prior on ubuntu precise, quantal and raring.
+## Running
 
-gl;hf
+```bash
+opendchub
+```
+
+On first run you'll be prompted for a listening port and admin password. Configuration is stored in `~/.opendchub/`.
+
+## Bot
+
+OpenDCHub supports Perl scripting. See [ODCHBot](https://github.com/typhonius/odchbot) for a full-featured bot.
+
+## License
+
+GNU General Public License v2. See [COPYING](COPYING).

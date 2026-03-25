@@ -35,12 +35,16 @@ RUN cpanm SQL::Abstract::Limit --notest 2>/dev/null || true
 RUN mkdir -p /root/.opendchub
 
 # Build opendchub
-COPY odchsrc/ /build/odchsrc/
+COPY configure.in Makefile.am acconfig.h /build/opendchub/
+COPY AUTHORS ChangeLog COPYING INSTALL NEWS README.md TODO /build/opendchub/
+RUN ln -s README.md /build/opendchub/README
+COPY src/Makefile.am src/*.c src/*.h /build/opendchub/src/
+COPY Samplescripts/ /build/opendchub/Samplescripts/
 
-WORKDIR /build/odchsrc
+WORKDIR /build/opendchub
 
-RUN automake --add-missing --copy 2>/dev/null || true
-RUN autoreconf -fi 2>/dev/null || autoconf -f
+RUN automake --add-missing --copy 2>&1 || true
+RUN autoreconf -fi 2>&1 || autoconf -f 2>&1
 RUN ./configure 2>&1 | tail -5
 RUN make clean 2>/dev/null; make
 RUN ls -la src/opendchub

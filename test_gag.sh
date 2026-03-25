@@ -16,7 +16,7 @@ echo "=== OpenDCHub Build Verification     ==="
 echo "========================================"
 
 # Test 1: Binary exists
-if [ -x /build/odchsrc/src/opendchub ]; then
+if [ -x /build/opendchub/src/opendchub ]; then
     pass "Binary built successfully"
 else
     fail "Binary not found"
@@ -24,7 +24,7 @@ else
 fi
 
 # Test 2: Perl support
-if grep -q "#define HAVE_PERL" /build/odchsrc/config.h; then
+if grep -q "#define HAVE_PERL" /build/opendchub/config.h; then
     pass "Perl scripting support compiled in"
 else
     fail "Perl scripting support NOT compiled in"
@@ -36,14 +36,14 @@ echo "=== Source Code Fix Verification     ==="
 echo "========================================"
 
 # Test 3: check_if_gagged has nickname comparison
-if grep -q "match_with_wildcards(user->nick, gag_host)" /build/odchsrc/src/fileio.c; then
+if grep -q "match_with_wildcards(user->nick, gag_host)" /build/opendchub/src/fileio.c; then
     pass "check_if_gagged() compares against user nickname"
 else
     fail "check_if_gagged() MISSING nickname comparison"
 fi
 
 # Test 4: No broken || GAG pattern (ignore comments)
-BROKEN=$(grep -v '^\s*/\*' /build/odchsrc/src/commands.c | grep -v '^\s*\*' | grep -c "== NICKBAN || GAG)" || true)
+BROKEN=$(grep -v '^\s*/\*' /build/opendchub/src/commands.c | grep -v '^\s*\*' | grep -c "== NICKBAN || GAG)" || true)
 if [ "$BROKEN" = "0" ]; then
     pass "No broken '|| GAG)' always-true conditions"
 else
@@ -51,7 +51,7 @@ else
 fi
 
 # Test 5: Correct type == GAG pattern exists
-FIXED=$(grep -c "type == NICKBAN || type == GAG)" /build/odchsrc/src/commands.c || true)
+FIXED=$(grep -c "type == NICKBAN || type == GAG)" /build/opendchub/src/commands.c || true)
 if [ "$FIXED" = "2" ]; then
     pass "Both ballow() type checks use correct 'type == GAG'"
 else
@@ -59,7 +59,7 @@ else
 fi
 
 # Test 6: snprintf used for ban_line (ignore comments)
-SNPRINTF=$(grep -v '^\s*/\*' /build/odchsrc/src/commands.c | grep -c "snprintf(ban_line, sizeof(ban_line)" || true)
+SNPRINTF=$(grep -v '^\s*/\*' /build/opendchub/src/commands.c | grep -c "snprintf(ban_line, sizeof(ban_line)" || true)
 if [ "$SNPRINTF" -ge 4 ]; then
     pass "All $SNPRINTF ban_line writes use snprintf with bounds"
 else
@@ -67,7 +67,7 @@ else
 fi
 
 # Test 7: No unsafe sprintf on ban_line (excluding comments)
-UNSAFE=$(grep -v '^\s*/\*' /build/odchsrc/src/commands.c | grep -v '^\s*\*' | grep "sprintf(ban_line," | grep -cv "snprintf" || true)
+UNSAFE=$(grep -v '^\s*/\*' /build/opendchub/src/commands.c | grep -v '^\s*\*' | grep "sprintf(ban_line," | grep -cv "snprintf" || true)
 if [ "$UNSAFE" = "0" ]; then
     pass "No unsafe sprintf calls on ban_line"
 else
@@ -75,14 +75,14 @@ else
 fi
 
 # Test 8: No triplicate log
-if grep -q 'logprintf.*remove_line.*logprintf.*remove_line' /build/odchsrc/src/fileio.c; then
+if grep -q 'logprintf.*remove_line.*logprintf.*remove_line' /build/opendchub/src/fileio.c; then
     fail "Triplicate log message still present"
 else
     pass "Triplicate log message fixed"
 fi
 
 # Test 9: Unused variables cleaned up
-if grep -A 15 "int check_if_gagged" /build/odchsrc/src/fileio.c | grep -q "string_ip"; then
+if grep -A 15 "int check_if_gagged" /build/opendchub/src/fileio.c | grep -q "string_ip"; then
     fail "Unused string_ip variable still in check_if_gagged()"
 else
     pass "Unused variables removed from check_if_gagged()"
@@ -254,7 +254,7 @@ mkdir -p /root/.opendchub/logs
 cd /root/.opendchub/scripts
 
 # Start hub with piped config answers (port, admin_pass, link_pass)
-printf "4111\ntestpass\nlinkpass\n" | /build/odchsrc/src/opendchub -d &
+printf "4111\ntestpass\nlinkpass\n" | /build/opendchub/src/opendchub -d &
 HUB_PID=$!
 echo "  Starting hub (PID: $HUB_PID)..."
 sleep 3
