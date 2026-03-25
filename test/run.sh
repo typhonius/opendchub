@@ -308,7 +308,7 @@ if nc -z localhost 4111 2>/dev/null; then
 
     # Run the comprehensive Perl DC client integration test
     cd /root/.opendchub/scripts
-    if perl /build/test_integration.pl; then
+    if perl /build/test/dc_client.pl; then
         pass "DC client integration tests passed"
     else
         fail "DC client integration tests had failures"
