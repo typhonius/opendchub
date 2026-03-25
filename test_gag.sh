@@ -1,5 +1,5 @@
 #!/bin/bash
-# Full integration tests: opendchub build + source fixes + odchbot end-to-end
+# Full integration tests: opendchub build + source fixes + odchbot v4 end-to-end
 set -e
 
 PASS=0
@@ -90,31 +90,44 @@ fi
 
 echo ""
 echo "========================================"
-echo "=== ODCHBot Perl Module Checks       ==="
+echo "=== ODCHBot v4 Module Checks         ==="
 echo "========================================"
 
-# Test: Core modules load without errors
-for module in DCBSettings DCBCommon DCBDatabase DCBUser; do
-    if perl -I/build/odchbot -e "eval { require $module }; exit(\$@ ? 1 : 0)" 2>/dev/null; then
-        pass "Module $module loads without compile errors"
+# Test: Core v4 modules load without errors
+V4_LIB="/build/odchbot/lib"
+
+for module in ODCHBot::Core ODCHBot::Config ODCHBot::Database ODCHBot::EventBus ODCHBot::User ODCHBot::UserStore ODCHBot::Context ODCHBot::Formatter ODCHBot::CommandRegistry; do
+    if perl -I"$V4_LIB" -e "eval { require $module }; exit(\$@ ? 1 : 0)" 2>/dev/null; then
+        pass "Module $module loads"
     else
         fail "Module $module has compile errors"
     fi
 done
 
-# Test: Command modules compile (skip ones needing external modules)
+# Test: Adapter modules load
+for module in ODCHBot::Adapter::NMDC ODCHBot::Adapter::Test; do
+    if perl -I"$V4_LIB" -e "eval { require $module }; exit(\$@ ? 1 : 0)" 2>/dev/null; then
+        pass "Module $module loads"
+    else
+        fail "Module $module has compile errors"
+    fi
+done
+
+# Test: Role modules load
+for module in ODCHBot::Role::Command ODCHBot::Role::Adapter; do
+    if perl -I"$V4_LIB" -e "eval { require $module }; exit(\$@ ? 1 : 0)" 2>/dev/null; then
+        pass "Module $module loads"
+    else
+        fail "Module $module has compile errors"
+    fi
+done
+
+# Test: All command modules compile
 CMD_PASS=0
 CMD_FAIL=0
-CMD_SKIP=0
-# Commands that need external modules not available in test env
-SKIP_CMDS="bug movie update weather"
-for pm in /build/odchbot/commands/*.pm; do
+for pm in "$V4_LIB"/ODCHBot/Command/*.pm; do
     name=$(basename "$pm" .pm)
-    if echo "$SKIP_CMDS" | grep -qw "$name"; then
-        CMD_SKIP=$((CMD_SKIP + 1))
-        continue
-    fi
-    if perl -I/build/odchbot -I/build/odchbot/commands -c "$pm" 2>/dev/null; then
+    if perl -I"$V4_LIB" -c "$pm" 2>/dev/null; then
         CMD_PASS=$((CMD_PASS + 1))
     else
         CMD_FAIL=$((CMD_FAIL + 1))
@@ -122,36 +135,31 @@ for pm in /build/odchbot/commands/*.pm; do
     fi
 done
 if [ $CMD_FAIL -eq 0 ]; then
-    pass "All $CMD_PASS command modules compile cleanly ($CMD_SKIP skipped - need external deps)"
+    pass "All $CMD_PASS v4 command modules compile cleanly"
 else
-    fail "$CMD_FAIL command modules have compile issues ($CMD_PASS OK, $CMD_SKIP skipped)"
-fi
-
-# Test: YAML configs are valid
-YAML_PASS=0
-YAML_FAIL=0
-for yml in /build/odchbot/commands/*.yml; do
-    name=$(basename "$yml" .yml)
-    if [ ! -s "$yml" ]; then
-        # Skip empty files (legacy commands like random.yml)
-        continue
-    fi
-    if perl -MYAML::Syck -e "YAML::Syck::LoadFile('$yml')" 2>/dev/null; then
-        YAML_PASS=$((YAML_PASS + 1))
-    else
-        YAML_FAIL=$((YAML_FAIL + 1))
-        echo "    WARNING: $name.yml is invalid YAML"
-    fi
-done
-if [ $YAML_FAIL -eq 0 ]; then
-    pass "All $YAML_PASS command YAML configs are valid"
-else
-    fail "$YAML_FAIL YAML configs are invalid ($YAML_PASS OK)"
+    fail "$CMD_FAIL command modules have compile issues ($CMD_PASS OK)"
 fi
 
 echo ""
 echo "========================================"
-echo "=== Hub + Bot Integration Test       ==="
+echo "=== ODCHBot v4 Unit Tests            ==="
+echo "========================================"
+
+# Run v4 unit tests with prove
+if [ -d /build/odchbot/t/v4 ]; then
+    cd /build/odchbot
+    if prove -I lib -I t/v4 t/v4/ 2>&1; then
+        pass "All v4 unit tests passed"
+    else
+        fail "v4 unit test suite had failures"
+    fi
+else
+    skip "No v4 unit test directory found"
+fi
+
+echo ""
+echo "========================================"
+echo "=== Hub + Bot v4 Integration Test    ==="
 echo "========================================"
 
 # Set up hub config
@@ -177,9 +185,19 @@ touch /root/.opendchub/gaglist
 touch /root/.opendchub/reglist
 touch /root/.opendchub/linklist
 
-# Set up odchbot configuration
-mkdir -p /build/odchbot/logs
-cat > /build/odchbot/odchbot.yml << 'BOTCONF'
+# Set up v4 directory layout
+# bin/odchbot.pl uses FindBin::Bin/../lib and FindBin::Bin/../odchbot.yml
+# Hub loads scripts from ~/.opendchub/scripts/
+# So: scripts/odchbot.pl (FindBin) -> ../lib (modules), ../odchbot.yml (config)
+
+# Copy entry point to scripts dir
+cp /build/odchbot/bin/odchbot.pl /root/.opendchub/scripts/odchbot.pl
+
+# Copy lib tree one level up from scripts (../lib)
+cp -r /build/odchbot/lib /root/.opendchub/lib
+
+# Create config one level up from scripts (../odchbot.yml)
+cat > /root/.opendchub/odchbot.yml << 'BOTCONF'
 ---
 config:
   allow_anon: 1
@@ -191,7 +209,6 @@ config:
   botshare: 136571
   botspeed: LAN(T1)
   bottag: RAWRDC++
-  commandPath: commands
   cp: "-"
   db:
     database: odchbot.db
@@ -211,44 +228,29 @@ config:
   timezone: Australia/Canberra
   username_anonymous: Anonymous
   username_max_length: 35
-  version: v3
+  version: v4
   website: http://localhost
   topic: "Integration Test Hub - Testing in Progress"
+  rules_url: "http://localhost/rules"
+  karma_url: "http://localhost/karma"
 BOTCONF
 
-cat > /build/odchbot/odchbot.log4perl.conf << 'LOG4PERL'
+chmod 600 /root/.opendchub/odchbot.yml
+
+# Log4perl config (base_dir = dirname of yml = /root/.opendchub)
+cat > /root/.opendchub/odchbot.log4perl.conf << 'LOG4PERL'
 log4perl.rootLogger=DEBUG, LOGFILE
 log4perl.appender.LOGFILE=Log::Log4perl::Appender::File
-log4perl.appender.LOGFILE.filename=logs/odchbot.log
+log4perl.appender.LOGFILE.filename=/root/.opendchub/logs/odchbot.log
 log4perl.appender.LOGFILE.mode=append
 log4perl.appender.LOGFILE.layout=Log::Log4perl::Layout::PatternLayout
 log4perl.appender.LOGFILE.layout.ConversionPattern=[%p] %d{MM-dd-yyyy HH:mm:ss} %F %L - %m%n
 LOG4PERL
 
-# Remove commands that need external modules not available in test env
-# This prevents the bot from trying to register/compile them
-rm -f /build/odchbot/commands/bug.yml /build/odchbot/commands/bug.pm
-rm -f /build/odchbot/commands/movie.yml /build/odchbot/commands/movie.pm
-rm -f /build/odchbot/commands/weather.yml /build/odchbot/commands/weather.pm
-rm -f /build/odchbot/commands/update.yml /build/odchbot/commands/update.pm
-rm -f /build/odchbot/commands/random.yml /build/odchbot/commands/random.pl
+mkdir -p /root/.opendchub/logs
 
-# Copy ALL odchbot files to the hub scripts directory
-# The hub runs scripts from ~/.opendchub/scripts/ and FindBin resolves to that dir
-cp /build/odchbot/odchbot.pl /root/.opendchub/scripts/odchbot.pl
-cp /build/odchbot/DCBSettings.pm /root/.opendchub/scripts/
-cp /build/odchbot/DCBDatabase.pm /root/.opendchub/scripts/
-cp /build/odchbot/DCBCommon.pm /root/.opendchub/scripts/
-cp /build/odchbot/DCBUser.pm /root/.opendchub/scripts/
-cp /build/odchbot/odchbot.yml /root/.opendchub/scripts/odchbot.yml
-chmod 600 /root/.opendchub/scripts/odchbot.yml
-cp /build/odchbot/odchbot.log4perl.conf /root/.opendchub/scripts/
-cp -r /build/odchbot/commands /root/.opendchub/scripts/commands
-mkdir -p /root/.opendchub/scripts/logs
-
-# The hub forks the Perl script with its own CWD.
-# odchbot.pl uses FindBin for lib path, but Log::Log4perl->init() uses a relative path.
-# Start the hub from the scripts dir so relative paths resolve correctly.
+# The hub CWD needs to be where relative paths resolve.
+# Start the hub from the home dir.
 cd /root/.opendchub/scripts
 
 # Start hub with piped config answers (port, admin_pass, link_pass)
@@ -287,11 +289,11 @@ if nc -z localhost 4111 2>/dev/null; then
 
     # Check for bot startup in hub log or data
     sleep 2
-    BOT_LOG="/root/.opendchub/scripts/logs/odchbot.log"
+    BOT_LOG="/root/.opendchub/logs/odchbot.log"
     if [ -f "$BOT_LOG" ]; then
         pass "ODCHBot log file created"
         if grep -q "Dragon" "$BOT_LOG" 2>/dev/null; then
-            pass "ODCHBot initialized (found in log)"
+            pass "ODCHBot v4 initialized (found in log)"
         else
             skip "ODCHBot may not have logged startup yet"
         fi
@@ -314,8 +316,8 @@ if nc -z localhost 4111 2>/dev/null; then
 
     # Show bot log for debugging
     echo ""
-    echo "--- Bot Log (last 30 lines) ---"
-    tail -30 /root/.opendchub/scripts/logs/odchbot.log 2>/dev/null || echo "  (no log available)"
+    echo "--- Bot Log (last 50 lines) ---"
+    tail -50 /root/.opendchub/logs/odchbot.log 2>/dev/null || echo "  (no log available)"
 
     # Clean up
     kill $HUB_PID 2>/dev/null || true
@@ -327,23 +329,9 @@ else
     # Show any error output
     echo "  Checking for hub process..."
     ps aux | grep opendchub || true
-fi
-
-echo ""
-echo "========================================"
-echo "=== ODCHBot Unit Tests               ==="
-echo "========================================"
-
-# Run odchbot unit tests if the test directory exists
-if [ -d /build/odchbot/t ]; then
-    cd /build/odchbot
-    if prove -I. -It/lib t/ 2>&1; then
-        pass "All odchbot unit tests passed"
-    else
-        fail "ODCHBot unit test suite had failures"
-    fi
-else
-    skip "No unit test directory found"
+    # Check if bot had errors
+    echo "  Checking bot log..."
+    cat /root/.opendchub/logs/odchbot.log 2>/dev/null || echo "  (no log)"
 fi
 
 echo ""

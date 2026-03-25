@@ -23,6 +23,11 @@ RUN apt-get update && apt-get install -y \
     libjson-perl \
     liblog-log4perl-perl \
     liburi-perl \
+    libmoo-perl \
+    libwww-perl \
+    libxml-simple-perl \
+    libipc-system-simple-perl \
+    libtest-exception-perl \
     && rm -rf /var/lib/apt/lists/*
 
 RUN cpanm SQL::Abstract::Limit --notest 2>/dev/null || true
@@ -36,11 +41,11 @@ WORKDIR /build/odchsrc
 
 RUN automake --add-missing --copy 2>/dev/null || true
 RUN autoreconf -fi 2>/dev/null || autoconf -f
-RUN CFLAGS="-fcommon" ./configure 2>&1 | tail -5
-RUN make
+RUN ./configure 2>&1 | tail -5
+RUN make clean 2>/dev/null; make
 RUN ls -la src/opendchub
 
-# Copy odchbot
+# Copy odchbot (v4 with lib/ structure)
 COPY odchbot/ /build/odchbot/
 
 # Create database directory for odchbot

@@ -29,9 +29,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <netdb.h>
-#if HAVE_MALLOC_H
-# include <malloc.h>
-#endif
 #include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -196,8 +193,8 @@ int perl_init(void)
 	     non_human_user_list->email = NULL;
 	     non_human_user_list->desc = NULL;
 	     memset(non_human_user_list->nick, 0, MAX_NICK_LEN+1);
-	     sprintf(non_human_user_list->nick, "parent process");
-	     sprintf(non_human_user_list->hostname, "parent_process");
+	     snprintf(non_human_user_list->nick, MAX_NICK_LEN+1, "parent process");
+	     snprintf(non_human_user_list->hostname, MAX_HOST_LEN+1, "parent_process");
 	     send_to_user("$NewScript|", non_human_user_list);
 	     
 	     /* Remove all users.  */	    
@@ -436,7 +433,8 @@ void sub_to_script(char *buf)
 	temp_user->sock = 0;
 	
 	/* Set the nick.  */
-	strcpy(temp_user->nick, temp_nick);	     
+	strncpy(temp_user->nick, temp_nick, MAX_NICK_LEN);
+	temp_user->nick[MAX_NICK_LEN] = '\0';
 	
 	/* Add to hashtable.  */
 	add_human_to_hash(temp_user);		     
@@ -552,7 +550,7 @@ void sub_to_script(char *buf)
 	      * way since the pipe can't be used internally between processes.
 	      * Maybe Open DC Hub shouldn't be using the flawed Direct Connect
 	      * protocol between processes, but thats a _big_ todo...  */
-	     strcat(arg2, "|");
+	     sprintfa(arg2, strlen(arg2) + 2, "|");
 	     XPUSHs(sv_2mortal(newSVpvn(arg2, strlen(arg2))));
 	  }
 	else if(!strncmp(subname, "added_multi_hub", 15))

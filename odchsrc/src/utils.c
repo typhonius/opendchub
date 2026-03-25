@@ -201,7 +201,7 @@ void send_lock(struct user_t *user)
 	srand(user->key);
 	len = 48 + rand()%30;
 	
-	sprintf(lock_string, "$Lock ");
+	snprintf(lock_string, sizeof(lock_string), "$Lock ");
 	
 	lock_string[6] = '%' + rand()%('z'-'%');
 	/* The values in the lock should vary from '%' to 'z' */ 
@@ -230,7 +230,7 @@ void send_lock(struct user_t *user)
 	sprintfa(lock_string, sizeof(lock_string), "|");
      }
    else
-     sprintf(lock_string, "$Lock Sending_key_isn't_neccessary,_key_won't_be_checked. Pk=Same_goes_here.|");
+     snprintf(lock_string, sizeof(lock_string), "$Lock Sending_key_isn't_neccessary,_key_won't_be_checked. Pk=Same_goes_here.|");
    send_to_user(lock_string, user);   
 }
 
@@ -269,19 +269,19 @@ int validate_key(char *buf, struct user_t *user)
    switch(j)
      {
       case 5:
-	sprintf(key, "/%%DCN005%%/");
+	snprintf(key, sizeof(key), "/%%DCN005%%/");
 	break;
-	
+
       case 36:
-	sprintf(key, "/%%DCN036%%/");
+	snprintf(key, sizeof(key), "/%%DCN036%%/");
 	break;
-	
+
       case 96:
-	sprintf(key, "/%%DCN096%%/");
+	snprintf(key, sizeof(key), "/%%DCN096%%/");
 	break;
-	
+
       default:
-	sprintf(key, "%c", j);
+	snprintf(key, sizeof(key), "%c", j);
 	break;
      }
    lockp++;
@@ -361,7 +361,7 @@ void get_users_hostname(char *nick, char *buffy)
 	       {		  
 		  /* The user is here, so detach and put the hostname in the
 		   * buf.  */
-		  sprintf(buffy, "%s", temp_host);
+		  snprintf(buffy, MAX_HOST_LEN+1, "%s", temp_host);
 		  shmdt(buf);
 		  sem_give(user_list_sem);
 		  return;

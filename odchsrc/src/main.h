@@ -158,70 +158,68 @@ union my_semun
       struct seminfo *__buf;      /* buffer for IPC_INFO */
 };
 
-/* Global variables */
-pid_t  pid;                         /* Pid of process if parent, if it's a child, pid is 0, for scripts, it's -1 and for hublist upload processes it's -2  */
-int    users_per_fork;              /* Users in hub when fork occurs */
-struct user_t *non_human_user_list; /* List of non-human users */
-struct user_t **human_hash_table;  /* Hashtable of human users */
-struct sock_t *human_sock_list;
-unsigned int listening_port;        /* Port on which we listen for connections */
-unsigned int admin_port;            /* Administration port */
-BYTE   admin_localhost;             /* 1 to bind administration port localhost only */
-int    admin_listening_socket;      /* Socket for incoming connections from admins */
-int    listening_socket;            /* Socket for incoming connections from clients */
-int    listening_unx_socket;        /* Socket for forked processes to connect to */
-int    listening_udp_socket;        /* Socket for incoming multi-hub messages */
-char   hub_name[MAX_HUB_NAME+1];    /* Name of the hub. */
-BYTE   debug;                       /* 1 for debug mode, else 0 */
-BYTE   registered_only;             /* 1 for registered only mode, else 0 */
-BYTE   hublist_upload;              /* User set variable, if 1, upload */
-BYTE   ban_overrides_allow;         /* 1 for banlist to override allowlist */
-BYTE   redir_on_min_share;          /* 1 if user should be redirected if user shares less than the minimum share */
-BYTE   check_key;                   /* Checks key from client if set to 1 */
-BYTE   reverse_dns;                 /* If 1, reverse dns lookups are made on newly connected clients.  */
-BYTE   verbosity;                   /* This sets the verbosity of the log file, may vary from 0 to 5 */
-char   hub_description[MAX_HUB_DESC+1]; /* The description of hub that is uploaded to public hublist */
-char   public_hub_host[MAX_HOST_LEN+1]; /* This is the hostname to upload hub description to */
-char   min_version[MAX_VERSION_LEN+1];  /* Minimum client verison to allow users to the hub. */
-char   hub_hostname[MAX_HOST_LEN+1];    /* This is the hostname that is uploaded to the public hublist, so don't try setting this to "127.0.0.1" or "localhost" */
-char   redirect_host[MAX_HOST_LEN+1]; /* Host to redirect users to if hub is full */
-char   *hub_full_mess;
-int    max_users;
-int    max_sockets;
-long long min_share;      /* Minimum share for clients */
-int    total_share_shm;    /* Identifier for the shared memory segment that contains the total share on hub, uploaded to public hub list.  */
-int    total_share_sem;    /* Semaphore Id for the shared momry segment above.  */
-int    user_list_shm_shm;  /* Identifier for shared memory segment containing the shared memory segment for the user list :)  */
-int    user_list_sem;      /* And a semaphore to control access to it.  */ 
-char   admin_pass[MAX_ADMIN_PASS_LEN+1];
-char   link_pass[MAX_ADMIN_PASS_LEN+1]; /* Password for hub linking */
-char   default_pass[MAX_ADMIN_PASS_LEN+1];
-BYTE   upload;                      /* keeps track on when it's time to upload to public hub list */
-BYTE   quit;
-BYTE   do_write;
-BYTE   do_send_linked_hubs;
-BYTE   do_purge_user_list;
-BYTE   do_fork;
-BYTE   script_reload;
-char   config_dir[MAX_FDP_LEN+1];
-char   un_sock_path[MAX_FDP_LEN+1];
-char   logfile[MAX_FDP_LEN+1];	/* Logfile if specifically set */
-BYTE   syslog_enable;
-BYTE   syslog_switch;
-BYTE   searchcheck_exclude_internal;
-BYTE   searchcheck_exclude_all;
-int    kick_bantime;
-int    searchspam_time;
-uid_t  dchub_user;
-gid_t  dchub_group;
-char   working_dir[MAX_FDP_LEN+1];
-time_t hub_start_time;
-int    max_email_len;
-int    max_desc_len;
-BYTE   crypt_enable;
-int    current_forked;   /* This is used to keep track on which 
-			  * process that holds the listening
-			  * sockets.  */
+/* Global variables (defined in main.c) */
+extern pid_t  pid;
+extern int    users_per_fork;
+extern struct user_t *non_human_user_list;
+extern struct user_t **human_hash_table;
+extern struct sock_t *human_sock_list;
+extern unsigned int listening_port;
+extern unsigned int admin_port;
+extern BYTE   admin_localhost;
+extern int    admin_listening_socket;
+extern int    listening_socket;
+extern int    listening_unx_socket;
+extern int    listening_udp_socket;
+extern char   hub_name[MAX_HUB_NAME+1];
+extern BYTE   debug;
+extern BYTE   registered_only;
+extern BYTE   hublist_upload;
+extern BYTE   ban_overrides_allow;
+extern BYTE   redir_on_min_share;
+extern BYTE   check_key;
+extern BYTE   reverse_dns;
+extern BYTE   verbosity;
+extern char   hub_description[MAX_HUB_DESC+1];
+extern char   public_hub_host[MAX_HOST_LEN+1];
+extern char   min_version[MAX_VERSION_LEN+1];
+extern char   hub_hostname[MAX_HOST_LEN+1];
+extern char   redirect_host[MAX_HOST_LEN+1];
+extern char   *hub_full_mess;
+extern int    max_users;
+extern int    max_sockets;
+extern long long min_share;
+extern int    total_share_shm;
+extern int    total_share_sem;
+extern int    user_list_shm_shm;
+extern int    user_list_sem;
+extern char   admin_pass[MAX_ADMIN_PASS_LEN+1];
+extern char   link_pass[MAX_ADMIN_PASS_LEN+1];
+extern char   default_pass[MAX_ADMIN_PASS_LEN+1];
+extern BYTE   upload;
+extern BYTE   quit;
+extern BYTE   do_write;
+extern BYTE   do_send_linked_hubs;
+extern BYTE   do_purge_user_list;
+extern BYTE   do_fork;
+extern BYTE   script_reload;
+extern char   config_dir[MAX_FDP_LEN+1];
+extern char   un_sock_path[MAX_FDP_LEN+1];
+extern char   logfile[MAX_FDP_LEN+1];
+extern BYTE   syslog_enable;
+extern BYTE   syslog_switch;
+extern BYTE   searchcheck_exclude_internal;
+extern BYTE   searchcheck_exclude_all;
+extern int    kick_bantime;
+extern int    searchspam_time;
+extern uid_t  dchub_user;
+extern gid_t  dchub_group;
+extern char   working_dir[MAX_FDP_LEN+1];
+extern time_t hub_start_time;
+extern int    max_email_len;
+extern int    max_desc_len;
+extern BYTE   crypt_enable;
+extern int    current_forked;
 
 /* Functions */
 void   hub_mess(struct user_t *user, int mess_type);

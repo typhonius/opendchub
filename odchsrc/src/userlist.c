@@ -82,10 +82,10 @@ int init_user_list(void)
    shmdt((char *)user_list_shm_id);
    
    /* Print the current number of entries.  */
-   sprintf(buf, "%d %d", 50, 0);
+   snprintf(buf, 20, "%d %d", 50, 0);
 
    bufp = buf + 20;
-   sprintf(bufp, "%d", 0);
+   snprintf(bufp, 10, "%d", 0);
    
    /* Initialize the entries to 0.  */
    bufp = buf + 30;
@@ -196,7 +196,7 @@ int add_user_to_list(struct user_t *user)
 	  {
 	     /* And add users nick and hostname.  */
 	     snprintf(bufp, USER_LIST_ENT_SIZE, "%s %s", user->nick, user->hostname);
-	     sprintf(buf, "%d %d", spaces, entries+1);
+	     snprintf(buf, 20, "%d %d", spaces, entries+1);
 	     /* Detach from the segment.  */
 	     shmdt(buf);
 	     sem_give(user_list_sem);
@@ -251,7 +251,7 @@ int remove_user_from_list(char *nick)
 	     if((strncasecmp(temp_nick, nick, strlen(nick)) == 0)
 		&& (strlen(nick) == strlen(temp_nick)))
 	       {
-		  sprintf(buf, "%d %d", spaces, entries-1);
+		  snprintf(buf, 20, "%d %d", spaces, entries-1);
 		  /* Set the first character in the nick to null.  */
 		  *bufp = '\0';
 		  shmdt(buf);
@@ -383,28 +383,28 @@ void increase_user_list(void)
      }
    
    /* Print the current number of entries.  */
-   sprintf(newbuf, "%d %d", spaces+50, entries);
-   
+   snprintf(newbuf, 20, "%d %d", spaces+50, entries);
+
    oldbufp = oldbuf + 20;
    newbufp = newbuf + 20;
 
    sscanf(oldbufp, "%d", &oldpid);
-   sprintf(newbufp, "%d", oldpid);
-   
+   snprintf(newbufp, 10, "%d", oldpid);
+
    oldbufp = oldbuf + 30;
    newbufp = newbuf + 30;
-   
-   for(i = 1; i <= spaces; i++) 
+
+   for(i = 1; i <= spaces; i++)
      {
 	if(*oldbufp != '\0')
 	  {
 	     /* Get the users nick and hostname.  */
 	     sscanf(oldbufp, "%s %s", temp_nick, temp_host);
-	   
+
 	     /* Print it in the new shared segment.  */
-	     sprintf(newbufp, "%s %s", temp_nick, temp_host);
+	     snprintf(newbufp, USER_LIST_ENT_SIZE, "%s %s", temp_nick, temp_host);
 	     newbufp += USER_LIST_ENT_SIZE;
-	  }	
+	  }
 	oldbufp += USER_LIST_ENT_SIZE;
      }
 
@@ -500,28 +500,28 @@ void purge_user_list(void)
      }
    
    /* Print the current number of entries.  */
-   sprintf(newbuf, "%d %d", newspaces, entries);
-   
+   snprintf(newbuf, 20, "%d %d", newspaces, entries);
+
    oldbufp = oldbuf + 20;
    newbufp = newbuf + 20;
 
    sscanf(oldbufp, "%d", &oldpid);
-   sprintf(newbufp, "%d", oldpid);
-   
+   snprintf(newbufp, 10, "%d", oldpid);
+
    oldbufp = oldbuf + 30;
    newbufp = newbuf + 30;
-   
+
    for(i = 1; i <= oldspaces; i++)
      {
 	if(*oldbufp != '\0')
-	  {	     
+	  {
 	     /* Get the users nick and hostname.  */
 	     sscanf(oldbufp, "%s %s", temp_nick, temp_host);
-	     
+
 	     /* Print it in the new shared segment.  */
-	     sprintf(newbufp, "%s %s", temp_nick, temp_host);
+	     snprintf(newbufp, USER_LIST_ENT_SIZE, "%s %s", temp_nick, temp_host);
 	     newbufp += USER_LIST_ENT_SIZE;
-	  }	
+	  }
 	oldbufp += USER_LIST_ENT_SIZE;
      }
    
@@ -556,7 +556,7 @@ void send_nick_list(struct user_t *user)
      {
 	if(user->nick[0] != '\0')
 	  {
-	     sprintf(temp_nick, "%s$$", user->nick);
+	     snprintf(temp_nick, sizeof(temp_nick), "%s$$", user->nick);
 	     send_to_user(temp_nick, user);
 	  }
      }
@@ -632,7 +632,7 @@ char *get_op_list(void)
 	return NULL;
      }
    
-   sprintf(op_list, "%s", "$OpList ");
+   snprintf(op_list, 9, "%s", "$OpList ");
    
    sem_take(user_list_sem);
    
@@ -695,7 +695,7 @@ char *get_op_list(void)
 	return NULL;
      }
    
-   strcat(op_list, "||");
+   sprintfa(op_list, strlen(op_list) + 3, "||");
    return op_list;
 }
 
@@ -730,7 +730,7 @@ int set_listening_pid(int newpid)
 	return 0;
      }
    
-   sprintf(bufp, "%d", newpid);
+   snprintf(bufp, 10, "%d", newpid);
 
    shmdt(buf);
    
