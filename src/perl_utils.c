@@ -192,6 +192,11 @@ int perl_init(void)
 	     non_human_user_list->next = NULL;
 	     non_human_user_list->email = NULL;
 	     non_human_user_list->desc = NULL;
+#ifdef HAVE_SSL
+	     non_human_user_list->ssl = NULL;
+	     non_human_user_list->ssl_handshake_done = 0;
+	     non_human_user_list->ssl_handshake_start = (time_t)0;
+#endif
 	     memset(non_human_user_list->nick, 0, MAX_NICK_LEN+1);
 	     snprintf(non_human_user_list->nick, MAX_NICK_LEN+1, "parent process");
 	     snprintf(non_human_user_list->hostname, MAX_HOST_LEN+1, "parent_process");
@@ -396,6 +401,11 @@ void sub_to_script(char *buf)
 	     temp_user->desc = NULL;
 	     temp_user->buf = NULL;
 	     temp_user->outbuf = NULL;
+#ifdef HAVE_SSL
+	     temp_user->ssl = NULL;
+	     temp_user->ssl_handshake_done = 0;
+	     temp_user->ssl_handshake_start = (time_t)0;
+#endif
 	  }
 	else
 	  {
@@ -453,66 +463,89 @@ void sub_to_script(char *buf)
 	if(!(((i = cut_string(temp, '\005')) != -1) /* Do we not have a second argument? */
 	     && (*(temp+i+1) == '\005')))
 	  {	     
-	     if((arg1 = malloc(sizeof(char) * (cut_string(temp, '|') + 2))) == NULL)
-	       {
-		  logprintf(1, "Error - In sub_to_script()/malloc(): ");
-		  logerror(1, errno);
-		  quit = 1;
-		  return;
-	       }
-	     memset(arg1, 0, cut_string(temp, '|') + 1);
-	     strncpy(arg1, temp, cut_string(temp, '|'));
+	     {
+		int cs_len = cut_string(temp, '|');
+		if(cs_len <= 0) return;
+		if((arg1 = malloc(sizeof(char) * (cs_len + 2))) == NULL)
+		  {
+		     logprintf(1, "Error - In sub_to_script()/malloc(): ");
+		     logerror(1, errno);
+		     quit = 1;
+		     return;
+		  }
+		memset(arg1, 0, cs_len + 1);
+		strncpy(arg1, temp, cs_len);
+	     }
 	  }
 	else /* We have a second argument. */
 	  {	     	
-	     if((arg1 = malloc(sizeof(char) * (cut_string(temp, '\005') + 2))) == NULL)
-	       {
-		  logprintf(1, "Error - In sub_to_script()/malloc(): ");
-		  logerror(1, errno);
-		  quit = 1;
-		  return;
-	       }
-	     memset(arg1, 0, cut_string(temp, '\005') + 1);
-	     strncpy(arg1, temp, cut_string(temp, '\005'));
+	     {
+		int cs_len = cut_string(temp, '\005');
+		if(cs_len <= 0) return;
+		if((arg1 = malloc(sizeof(char) * (cs_len + 2))) == NULL)
+		  {
+		     logprintf(1, "Error - In sub_to_script()/malloc(): ");
+		     logerror(1, errno);
+		     quit = 1;
+		     return;
+		  }
+		memset(arg1, 0, cs_len + 1);
+		strncpy(arg1, temp, cs_len);
+	     }
 	  
 	     /* Second argument */
 	     temp = temp + cut_string(temp, '\005') + 2;	 
 	     if(!(((i = cut_string(temp, '\005')) != -1) /* Do we not have a third argument? */
 		&& (*(temp+i+1) == '\005')))
 	       {
-		  if((arg2 = malloc(sizeof(char) * (cut_string(temp, '|') + 2))) == NULL)
-		    {
-		       logprintf(1, "Error - In sub_to_script()/malloc(): ");
-		       logerror(1, errno);
-		       quit = 1;
-		       return;
-		    }
-		  memset(arg2, 0, cut_string(temp, '|') + 2);
-		  strncpy(arg2, temp, cut_string(temp, '|'));
+		  {
+		     int cs_len = cut_string(temp, '|');
+		     if(cs_len <= 0) { free(arg1); return; }
+		     if((arg2 = malloc(sizeof(char) * (cs_len + 2))) == NULL)
+		       {
+			  logprintf(1, "Error - In sub_to_script()/malloc(): ");
+			  logerror(1, errno);
+			  quit = 1;
+			  free(arg1);
+			  return;
+		       }
+		     memset(arg2, 0, cs_len + 2);
+		     strncpy(arg2, temp, cs_len);
+		  }
 	       }
 	     else /* We have a third argument */
 	       {
-		  if((arg2 = malloc(sizeof(char) * (cut_string(temp, '\005') + 2))) == NULL)
-		    {
-		       logprintf(1, "Error - In sub_to_script()/malloc(): ");
-		       logerror(1, errno);
-		       quit = 1;
-		       return;
-		    }
-		  memset(arg2, 0, cut_string(temp, '\005') + 2);
-		  strncpy(arg2, temp, cut_string(temp, '\005') + 1);
+		  {
+		     int cs_len = cut_string(temp, '\005');
+		     if(cs_len <= 0) { free(arg1); return; }
+		     if((arg2 = malloc(sizeof(char) * (cs_len + 2))) == NULL)
+		       {
+			  logprintf(1, "Error - In sub_to_script()/malloc(): ");
+			  logerror(1, errno);
+			  quit = 1;
+			  free(arg1);
+			  return;
+		       }
+		     memset(arg2, 0, cs_len + 2);
+		     strncpy(arg2, temp, cs_len);
+		  }
 
 		  /* Third argument */
 		  temp = temp + cut_string(temp, '\005') + 1;	 
-		  if((arg3 = malloc(sizeof(char) * (cut_string(temp, '|') + 2))) == NULL)
-		    {
-		       logprintf(1, "Error - In sub_to_script()/malloc(): ");
-		       logerror(1, errno);
-		       quit = 1;
-		       return;
-		    }
-		  memset(arg3, 0, cut_string(temp, '|') + 2);
-		  strncpy(arg3, temp, cut_string(temp, '|'));
+		  {
+		     int cs_len = cut_string(temp, '|');
+		     if(cs_len <= 0) { free(arg1); free(arg2); return; }
+		     if((arg3 = malloc(sizeof(char) * (cs_len + 2))) == NULL)
+		       {
+			  logprintf(1, "Error - In sub_to_script()/malloc(): ");
+			  logerror(1, errno);
+			  quit = 1;
+			  free(arg1); free(arg2);
+			  return;
+		       }
+		     memset(arg3, 0, cs_len + 2);
+		     strncpy(arg3, temp, cs_len);
+		  }
 	       }
 	  }
      }
@@ -632,6 +665,8 @@ void sub_to_script(char *buf)
      free(arg1);
    if(arg2 != NULL)
      free(arg2);
+   if(arg3 != NULL)
+     free(arg3);
 }
 
 /* Sends data from a script to a user.  */

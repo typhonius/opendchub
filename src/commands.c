@@ -2055,9 +2055,28 @@ void quit_program(void)
 	/* If we are the parent, close the listening sockets and close the temp file */
 	close(listening_socket);
 	close(listening_unx_socket);
+#ifdef HAVE_SSL
+	if(tls_listening_socket != -1)
+	  close(tls_listening_socket);
+	cleanup_ssl_ctx();
+#endif
 	unlink(un_sock_path);
 	exit(EXIT_SUCCESS);
      }
+}
+
+/* Constant-time string comparison to prevent timing attacks */
+static int secure_strcmp(const char *a, const char *b)
+{
+   size_t alen = strlen(a);
+   size_t blen = strlen(b);
+   size_t maxlen = (alen > blen) ? alen : blen;
+   volatile unsigned char result = (alen != blen) ? 1 : 0;
+   size_t i;
+   for(i = 0; i < maxlen; i++)
+     result |= ((unsigned char)(i < alen ? a[i] : 0))
+	      ^ ((unsigned char)(i < blen ? b[i] : 0));
+   return result;
 }
 
 /* Validate admin pass */
@@ -2065,11 +2084,10 @@ int check_admin_pass(char *buf, struct user_t *user)
 {
    char command[21];
    char pass[MAX_ADMIN_PASS_LEN+1];
-   
+
    sscanf(buf, "%20s %50[^|]|", command, pass);
-      
-   if((strncmp(pass, admin_pass, strlen(pass)) == 0) 
-      && (strlen(pass) == strlen(admin_pass)))
+
+   if(secure_strcmp(pass, admin_pass) == 0)
      {
 	if(get_human_user("Administrator") != NULL)
 	  {	     
@@ -2126,8 +2144,13 @@ void set_var(char *org_buf, struct user_t *user)
    else if(strncmp(buf, "hub_name ", 9) == 0)
      {
 	buf += 9;
-	strncpy(hub_name, buf, (cut_string(buf, '|') > MAX_HUB_NAME) ? MAX_HUB_NAME : cut_string(buf, '|'));
-	hub_name[cut_string(buf, '|')] = '\0';
+	{
+	   int slen = cut_string(buf, '|');
+	   if(slen < 0) slen = 0;
+	   if(slen > MAX_HUB_NAME) slen = MAX_HUB_NAME;
+	   strncpy(hub_name, buf, slen);
+	   hub_name[slen] = '\0';
+	}
 	if(user->type == ADMIN)
 	  uprintf(user, "\r\nHub Name set to \"%s\"\r\n", hub_name);
 	else if(user->type == OP_ADMIN)
@@ -2136,7 +2159,11 @@ void set_var(char *org_buf, struct user_t *user)
    else if(strncmp(buf, "max_users ", 10) == 0)
      {
 	buf += 10;
-	max_users = atoi(buf);
+	{
+	   int val = atoi(buf);
+	   if(val < 1) val = 1;
+	   max_users = val;
+	}
 	if(user->type == ADMIN)
 	  uprintf(user, "\r\nMax Users set to %d\r\n", max_users);
 	else if(user->type == OP_ADMIN)
@@ -2207,37 +2234,56 @@ void set_var(char *org_buf, struct user_t *user)
    else if(strncmp(buf, "admin_pass ", 11) == 0)
      {
 	buf += 11;
-	strncpy(admin_pass, buf, (cut_string(buf, '|') > MAX_ADMIN_PASS_LEN) ? MAX_ADMIN_PASS_LEN : cut_string(buf, '|'));
-	admin_pass[cut_string(buf, '|')] = '\0';
+	{
+	   int slen = cut_string(buf, '|');
+	   if(slen < 0) slen = 0;
+	   if(slen > MAX_ADMIN_PASS_LEN) slen = MAX_ADMIN_PASS_LEN;
+	   strncpy(admin_pass, buf, slen);
+	   admin_pass[slen] = '\0';
+	}
 	if(user->type == ADMIN)
-	  uprintf(user, "\r\nAdmin Pass set to \"%s\"\r\n", admin_pass);
+	  uprintf(user, "\r\nAdmin Pass updated successfully\r\n");
 	else if(user->type == OP_ADMIN)
-	  uprintf(user, "<Hub-Security> Admin Pass set to \"%s\"|", admin_pass);
+	  uprintf(user, "<Hub-Security> Admin Pass updated successfully|");
      }
    else if(strncmp(buf, "default_pass ", 13) == 0)
      {
         buf += 13;
-        strncpy(default_pass, buf, (cut_string(buf, '|') > MAX_ADMIN_PASS_LEN) ? MAX_ADMIN_PASS_LEN : cut_string(buf, '|'));
-        default_pass[cut_string(buf, '|')] = '\0';
+	{
+	   int slen = cut_string(buf, '|');
+	   if(slen < 0) slen = 0;
+	   if(slen > MAX_ADMIN_PASS_LEN) slen = MAX_ADMIN_PASS_LEN;
+	   strncpy(default_pass, buf, slen);
+	   default_pass[slen] = '\0';
+	}
         if(user->type == ADMIN)
-          uprintf(user, "\r\nDefault Pass set to \"%s\"\r\n", default_pass);
+          uprintf(user, "\r\nDefault Pass updated successfully\r\n");
         else if(user->type == OP_ADMIN)
-          uprintf(user, "<Hub-Security> Default Pass set to \"%s\"|", default_pass);
+          uprintf(user, "<Hub-Security> Default Pass updated successfully|");
      }
    else if(strncmp(buf, "link_pass ", 10) == 0)
      {
 	buf += 10;
-	strncpy(link_pass, buf, (cut_string(buf, '|') > MAX_ADMIN_PASS_LEN) ? MAX_ADMIN_PASS_LEN : cut_string(buf, '|'));
-	link_pass[cut_string(buf, '|')] = '\0';
+	{
+	   int slen = cut_string(buf, '|');
+	   if(slen < 0) slen = 0;
+	   if(slen > MAX_ADMIN_PASS_LEN) slen = MAX_ADMIN_PASS_LEN;
+	   strncpy(link_pass, buf, slen);
+	   link_pass[slen] = '\0';
+	}
 	if(user->type == ADMIN)
-	  uprintf(user, "\r\nLink Pass set to \"%s\"\r\n", link_pass);
+	  uprintf(user, "\r\nLink Pass updated successfully\r\n");
 	else if(user->type == OP_ADMIN)
-	  uprintf(user, "<Hub-Security> Link Pass set to \"%s\"|", link_pass);
+	  uprintf(user, "<Hub-Security> Link Pass updated successfully|");
      }
    else if(strncmp(buf, "users_per_fork ", 15) == 0)
      {
 	buf += 15;
-	users_per_fork = atoi(buf);
+	{
+	   int val = atoi(buf);
+	   if(val < 1) val = 1;
+	   users_per_fork = val;
+	}
 	if(user->type == ADMIN)
 	  uprintf(user, "\r\nUsers Per Fork set to %d\r\n", users_per_fork);
 	else if(user->type == OP_ADMIN)
@@ -2246,7 +2292,11 @@ void set_var(char *org_buf, struct user_t *user)
    else if(!strncmp(buf, "listening_port ", 15))
      {	
 	buf += 15;
-	listening_port = (unsigned int)(atoi(buf));
+	{
+	   int val = atoi(buf);
+	   if(val > 0 && val <= 65535)
+	     listening_port = (unsigned int)val;
+	}
 	if(user->type == ADMIN)
 	  uprintf(user, "\r\nListening Port set to %u\r\n", listening_port);
 	else if(user->type == OP_ADMIN)
@@ -2255,7 +2305,11 @@ void set_var(char *org_buf, struct user_t *user)
    else if(!strncmp(buf, "admin_port ", 11))
      {	
 	buf += 11;
-	admin_port = atoi(buf);
+	{
+	   int val = atoi(buf);
+	   if(val >= 0 && val <= 65535)
+	     admin_port = val;
+	}
 	if(user->type == ADMIN)
 	  uprintf(user, "\r\nAdmin port set to %d\r\n", admin_port);
 	else if(user->type == OP_ADMIN)
@@ -2273,8 +2327,13 @@ void set_var(char *org_buf, struct user_t *user)
    else if(strncmp(buf, "public_hub_host ", 16) == 0)
      {
 	buf += 16;
-	strncpy(public_hub_host, buf, (cut_string(buf, '|') > MAX_HOST_LEN) ? MAX_HOST_LEN : cut_string(buf, '|'));
-	public_hub_host[cut_string(buf, '|')] = '\0';
+	{
+	   int slen = cut_string(buf, '|');
+	   if(slen < 0) slen = 0;
+	   if(slen > MAX_HOST_LEN) slen = MAX_HOST_LEN;
+	   strncpy(public_hub_host, buf, slen);
+	   public_hub_host[slen] = '\0';
+	}
 	if(user->type == ADMIN)
 	  uprintf(user, "\r\nPublic hub host set to \"%s\"\r\n", public_hub_host);
 	else if(user->type == OP_ADMIN)
@@ -2283,8 +2342,13 @@ void set_var(char *org_buf, struct user_t *user)
    else if(strncmp(buf, "hub_hostname ", 13) == 0)
      {
 	buf += 13;
-	strncpy(hub_hostname, buf, (cut_string(buf, '|') > MAX_HOST_LEN) ? MAX_HOST_LEN : cut_string(buf, '|'));
-	hub_hostname[cut_string(buf, '|')] = '\0';
+	{
+	   int slen = cut_string(buf, '|');
+	   if(slen < 0) slen = 0;
+	   if(slen > MAX_HOST_LEN) slen = MAX_HOST_LEN;
+	   strncpy(hub_hostname, buf, slen);
+	   hub_hostname[slen] = '\0';
+	}
 	if(user->type == ADMIN)
 	  uprintf(user, "\r\nHub Hostname set to \"%s\"\r\n", hub_hostname);
 	else if(user->type == OP_ADMIN)
@@ -2293,8 +2357,13 @@ void set_var(char *org_buf, struct user_t *user)
    else if(strncmp(buf, "min_version ", 12) == 0)
      {
 	buf += 12;
-	strncpy(min_version, buf, (cut_string(buf, '|') > MAX_VERSION_LEN) ? MAX_VERSION_LEN : cut_string(buf, '|'));
-	min_version[cut_string(buf, '|')] = '\0';
+	{
+	   int slen = cut_string(buf, '|');
+	   if(slen < 0) slen = 0;
+	   if(slen > MAX_VERSION_LEN) slen = MAX_VERSION_LEN;
+	   strncpy(min_version, buf, slen);
+	   min_version[slen] = '\0';
+	}
 	if(user->type == OP_ADMIN)
 	  uprintf(user, "\r\nMinimum version set to \"%s\"\r\n", min_version);
 	else if(user->type == ADMIN)
@@ -2312,8 +2381,13 @@ void set_var(char *org_buf, struct user_t *user)
     else if(strncmp(buf, "redirect_host ", 14) == 0)
      {
 	buf += 14;
-	strncpy(redirect_host, buf, (cut_string(buf, '|') > MAX_HOST_LEN) ? MAX_HOST_LEN : cut_string(buf, '|'));
-	redirect_host[cut_string(buf, '|')] = '\0';
+	{
+	   int slen = cut_string(buf, '|');
+	   if(slen < 0) slen = 0;
+	   if(slen > MAX_HOST_LEN) slen = MAX_HOST_LEN;
+	   strncpy(redirect_host, buf, slen);
+	   redirect_host[slen] = '\0';
+	}
 	if(user->type == ADMIN)
 	  uprintf(user, "\r\nRedirect Host set to \"%s\"\r\n", redirect_host);
 	else if(user->type == OP_ADMIN)
@@ -3077,7 +3151,12 @@ void up_cmd(char *buf, int port)
 	     user->key = port;
 	     user->buf = NULL;
 	     user->outbuf = NULL;
-	     
+#ifdef HAVE_SSL
+	     user->ssl = NULL;
+	     user->ssl_handshake_done = 0;
+	     user->ssl_handshake_start = (time_t)0;
+#endif
+
 	     /* Add the user to the non-human user list.  */
 	     add_non_human_to_list(user);
 	     

@@ -57,6 +57,30 @@ if test "$CHECK" = "yes"; then
    fi
 fi
 
+dnl Check for SSL/TLS support
+AC_ARG_ENABLE(ssl,
+   AC_HELP_STRING([--enable-ssl],
+   		  [enable SSL/TLS support for encrypted connections]),
+   if test "$enableval" = "yes"; then
+      ENABLE_SSL="yes"
+   fi
+)
+
+if test "$ENABLE_SSL" = "yes"; then
+   SSL_FAIL="false"
+   AC_CHECK_LIB(ssl, SSL_CTX_new, [
+      LIBS="-lssl -lcrypto $LIBS"
+      AC_CHECK_HEADERS(openssl/ssl.h openssl/err.h, [], [SSL_FAIL="true"])
+   ], [SSL_FAIL="true"], [-lcrypto])
+
+   if test "$SSL_FAIL" = "false"; then
+      AC_DEFINE([HAVE_SSL], [], [SSL/TLS support enabled])
+      echo "SSL/TLS support is enabled."
+   else
+      echo "SSL/TLS support is disabled (missing libssl or headers)."
+   fi
+fi
+
 dnl Check if config directory exists.
 if test ! -d $HOME/.opendchub; then
    echo "creating config directory: $HOME/.opendchub"

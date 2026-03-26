@@ -33,3 +33,10 @@ void   send_to_humans(char *buf, int type, struct user_t *ex_user);
 const char *ip_to_string(unsigned long ip, char *buf, size_t bufsize);
 int    is_internal_address (long unsigned ip);
 void   send_to_user(char *buf, struct user_t *user);
+
+#ifdef HAVE_SSL
+int    init_ssl_ctx(void);
+void   cleanup_ssl_ctx(void);
+int    ssl_sendall(SSL *ssl, char *buf, int *len);
+int    ssl_do_handshake(struct user_t *user);
+#endif

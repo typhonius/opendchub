@@ -6,6 +6,7 @@ use strict;
 use warnings;
 use IO::Socket::INET;
 use IO::Select;
+my $HAS_SSL = eval { require IO::Socket::SSL; 1 };
 
 # Prevent SIGPIPE from killing us when hub closes connection
 $SIG{PIPE} = 'IGNORE';
@@ -580,6 +581,82 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
             pass("Commands list returned substantial data ($cmds_found expected commands found)");
         } else {
             fail("Commands list incomplete - only $cmds_found expected commands found");
+        }
+
+        print "\n--- Phase 8: TLS Connection Tests ---\n";
+
+        if ($HAS_SSL) {
+            my $TLS_PORT = $ENV{TLS_PORT} || 4112;
+
+            # Test: TLS connection + full NMDC handshake
+            my $tls_sock = IO::Socket::SSL->new(
+                PeerHost        => $HOST,
+                PeerPort        => $TLS_PORT,
+                SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_NONE(),
+                Timeout         => 10,
+            );
+
+            if ($tls_sock) {
+                pass("TLS connection established on port $TLS_PORT");
+
+                my $tls_lock = read_socket($tls_sock, 5);
+                if ($tls_lock =~ /\$Lock\s+(\S+)/) {
+                    my $tls_lock_str = $1;
+                    pass("Received \$Lock over TLS");
+
+                    # Complete NMDC handshake over TLS
+                    my $tls_key = lock2key($tls_lock_str);
+                    my $tls_nick = "TLSTestUser";
+                    print $tls_sock "\$Supports UserCommand NoGetINFO NoHello UserIP2|";
+                    print $tls_sock "\$Key $tls_key|";
+                    print $tls_sock "\$ValidateNick $tls_nick|";
+
+                    my $tls_response = read_until($tls_sock, qr/\$Hello/, 8);
+                    if ($tls_response =~ /\$Hello\s+\Q$tls_nick\E/) {
+                        pass("Full NMDC handshake over TLS succeeded");
+                    } else {
+                        fail("NMDC handshake over TLS failed (got: " . substr($tls_response, 0, 200) . ")");
+                    }
+                } else {
+                    fail("No \$Lock received over TLS (got: " . substr($tls_lock, 0, 200) . ")");
+                }
+                close($tls_sock);
+            } else {
+                fail("TLS connection failed: " . IO::Socket::SSL::errstr());
+            }
+
+            # Test: Concurrent plain + TLS connections
+            my $plain_sock2 = IO::Socket::INET->new(
+                PeerHost => $HOST,
+                PeerPort => $PORT,
+                Proto    => 'tcp',
+                Timeout  => 5,
+            );
+            my $tls_sock2 = IO::Socket::SSL->new(
+                PeerHost        => $HOST,
+                PeerPort        => $TLS_PORT,
+                SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_NONE(),
+                Timeout         => 5,
+            );
+            if ($plain_sock2 && $tls_sock2) {
+                my $p_data = read_socket($plain_sock2, 3);
+                my $t_data = read_socket($tls_sock2, 3);
+                if ($p_data =~ /\$Lock/ && $t_data =~ /\$Lock/) {
+                    pass("Concurrent plain + TLS connections both work");
+                } else {
+                    fail("Concurrent connections issue (plain: " . length($p_data) . "B, tls: " . length($t_data) . "B)");
+                }
+                close($plain_sock2);
+                close($tls_sock2);
+            } else {
+                fail("Could not open concurrent connections");
+                close($plain_sock2) if $plain_sock2;
+                close($tls_sock2) if $tls_sock2;
+            }
+        } else {
+            skip("IO::Socket::SSL not available - TLS client tests skipped");
+            skip("TLS concurrent test skipped");
+            skip("TLS handshake test skipped");
         }
 
     } elsif ($response =~ /\$ValidateDenide/) {

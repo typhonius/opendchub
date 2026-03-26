@@ -20,13 +20,19 @@
 
 #include <sys/types.h>
 
+#ifdef HAVE_SSL
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#endif
+
 /* Using the 32 bit int (sometimes even 64 bits) for boolean variables and
  * other variables that always will be between -128 and 127 would be a waste
  * of space, especially those in the user_t struct since it's used to 
  * frequently.  */
 #define BYTE char
 
-#define ALARM_TIME         900             /* Seconds between alarm calls */ 
+#define ALARM_TIME         900             /* Seconds between alarm calls */
+#define SSL_HANDSHAKE_TIMEOUT 30            /* Max seconds for TLS handshake */ 
 #define MAX_NICK_LEN       50              /* Maximum length of nickname, 20 is max in win client */
 #define MAX_HOST_LEN       121             /* Maximum length of hostname */
 #define MAX_VERSION_LEN    30              /* Maximum length of version name */
@@ -137,6 +143,11 @@ struct user_t
    BYTE rem;                          /* 1 if user is to be removed */
    time_t last_search;                /* Time of the last search attempt */
    int  permissions;                  /* Operator permissions (listed above) */
+#ifdef HAVE_SSL
+   SSL    *ssl;                       /* SSL connection object, NULL if plain */
+   BYTE   ssl_handshake_done;         /* 1 if TLS handshake is complete */
+   time_t ssl_handshake_start;        /* Time handshake began, for timeout */
+#endif
 };
 
 /* This is used for a linked list of the humans. This is to get faster 
@@ -220,6 +231,14 @@ extern int    max_email_len;
 extern int    max_desc_len;
 extern BYTE   crypt_enable;
 extern int    current_forked;
+
+#ifdef HAVE_SSL
+extern SSL_CTX *ssl_ctx;
+extern unsigned int tls_port;
+extern int    tls_listening_socket;
+extern char   tls_cert_file[MAX_FDP_LEN+1];
+extern char   tls_key_file[MAX_FDP_LEN+1];
+#endif
 
 /* Functions */
 void   hub_mess(struct user_t *user, int mess_type);

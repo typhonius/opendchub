@@ -557,6 +557,41 @@ int read_config(void)
 		    i++;
 		 crypt_enable = atoi(line + i);
 	       }
+#ifdef HAVE_SSL
+	     /* TLS listening port */
+	     else if(strncmp(line + i, "tls_port", 8) == 0)
+	       {
+		  while(!isdigit((int)line[i]))
+		    i++;
+		  {
+		     int val = atoi(line + i);
+		     if(val > 0 && val <= 65535)
+		       tls_port = (unsigned int)val;
+		  }
+	       }
+	     /* TLS certificate file */
+	     else if(strncmp(line + i, "tls_cert_file", 13) == 0)
+	       {
+		  if(strchr(line + i, '"') != NULL)
+		    {
+		       strncpy(tls_cert_file, strchr(line + i, '"') + 1, MAX_FDP_LEN);
+		       tls_cert_file[MAX_FDP_LEN] = '\0';
+		       if(*(tls_cert_file + strlen(tls_cert_file) - 1) == '"')
+			 *(tls_cert_file + strlen(tls_cert_file) - 1) = '\0';
+		    }
+	       }
+	     /* TLS private key file */
+	     else if(strncmp(line + i, "tls_key_file", 12) == 0)
+	       {
+		  if(strchr(line + i, '"') != NULL)
+		    {
+		       strncpy(tls_key_file, strchr(line + i, '"') + 1, MAX_FDP_LEN);
+		       tls_key_file[MAX_FDP_LEN] = '\0';
+		       if(*(tls_key_file + strlen(tls_key_file) - 1) == '"')
+			 *(tls_key_file + strlen(tls_key_file) - 1) = '\0';
+		    }
+	       }
+#endif
 	  }
      }
    set_lock(fd, F_UNLCK);
@@ -1091,8 +1126,8 @@ int check_if_banned(struct user_t *user, int type)
 		     && (mask > 0) && (mask <= 32))
 		    {
 		       fileip = (byte1<<24) | (byte2<<16) | (byte3<<8) | byte4;
-		       if((((0xFFFF << (32-mask)) & userip) 
-			   == ((0xFFFF << (32-mask)) & fileip))
+		       if((((0xFFFFFFFFU << (32-mask)) & userip) 
+			   == ((0xFFFFFFFFU << (32-mask)) & fileip))
 			  && ((ban_time == 0) || (ban_time > now_time)))
 			 {
 			    set_lock(fd, F_UNLCK);
@@ -1279,8 +1314,8 @@ int check_if_allowed(struct user_t *user)
 		&& (mask > 0) && (mask <= 32))
 	       {
 		  fileip = (byte1<<24) | (byte2<<16) | (byte3<<8) | byte4;
-		  if((((0xFFFF << (32-mask)) & userip) 
-		      == ((0xFFFF << (32-mask)) & fileip)) 
+		  if((((0xFFFFFFFFU << (32-mask)) & userip) 
+		      == ((0xFFFFFFFFU << (32-mask)) & fileip)) 
 		     && ((allow_time == 0) || (allow_time > now_time)))
 		    {
 		       set_lock(fd, F_UNLCK);

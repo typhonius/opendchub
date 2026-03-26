@@ -1,4 +1,4 @@
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -7,7 +7,9 @@ RUN apt-get update && apt-get install -y \
     perl \
     libperl-dev \
     libcrypt-dev \
+    libssl-dev \
     netcat-openbsd \
+    openssl \
     procps \
     cpanminus \
     libdbi-perl \
@@ -28,6 +30,7 @@ RUN apt-get update && apt-get install -y \
     libxml-simple-perl \
     libipc-system-simple-perl \
     libtest-exception-perl \
+    libio-socket-ssl-perl \
     && rm -rf /var/lib/apt/lists/*
 
 RUN cpanm SQL::Abstract::Limit --notest 2>/dev/null || true
@@ -45,7 +48,7 @@ WORKDIR /build/opendchub
 
 RUN automake --add-missing --copy 2>&1 || true
 RUN autoreconf -fi 2>&1 || autoconf -f 2>&1
-RUN ./configure 2>&1 | tail -5
+RUN ./configure --enable-ssl 2>&1 | tail -5
 RUN make clean 2>/dev/null; make
 RUN ls -la src/opendchub
 

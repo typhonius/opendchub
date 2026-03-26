@@ -175,6 +175,10 @@ void get_socket_action(void)
 	  total++;
 	if(admin_listening_socket != -1)
 	  total++;
+#ifdef HAVE_SSL
+	if(tls_listening_socket != -1)
+	  total++;
+#endif
      }
 
    if((ufds = calloc(total, sizeof(struct pollfd))) == NULL)
@@ -199,9 +203,16 @@ void get_socket_action(void)
 	num = 1;
 	if(admin_listening_socket != -1)
 	  {
-	     add_fd(&ufds[1], admin_listening_socket);
-	     num = 2;
+	     add_fd(&ufds[num], admin_listening_socket);
+	     num++;
 	  }
+#ifdef HAVE_SSL
+	if(tls_listening_socket != -1)
+	  {
+	     add_fd(&ufds[num], tls_listening_socket);
+	     num++;
+	  }
+#endif
      }
 
    /* ...the established non-human users...  */
@@ -250,6 +261,15 @@ void get_socket_action(void)
 		  new_human_user(listening_socket);
 		  matched = 1;
 	       }
+#ifdef HAVE_SSL
+	     /* Check if it's a new TLS connection */
+	     else if((pid == 0) && (tls_listening_socket != -1)
+		     && (fds->fd == tls_listening_socket))
+	       {
+		  new_human_user(tls_listening_socket);
+		  matched = 1;
+	       }
+#endif
 	     /* Or if it's a new forked process */
 	     else if((pid > 0) && (fds->fd == listening_unx_socket))
 	       {
@@ -292,8 +312,40 @@ void get_socket_action(void)
 			 {
 			    if(fds->fd == human_user->user->sock)
 			      {
-				 socket_action(human_user->user);
-				 matched = 1;
+#ifdef HAVE_SSL
+				 if(human_user->user->ssl != NULL
+				    && human_user->user->ssl_handshake_done == 0)
+				   {
+				      /* Check handshake timeout */
+				      if(human_user->user->ssl_handshake_start != 0
+					 && (time(NULL) - human_user->user->ssl_handshake_start) > SSL_HANDSHAKE_TIMEOUT)
+					{
+					   logprintf(2, "TLS handshake timeout for %s\n", human_user->user->hostname);
+					   human_user->user->rem = REMOVE_USER;
+					   matched = 1;
+					}
+				      else
+					{
+					   int hs_ret = ssl_do_handshake(human_user->user);
+					   if(hs_ret == 1)
+					     {
+						/* Handshake complete, send Lock */
+						send_lock(human_user->user);
+						hub_mess(human_user->user, INIT_MESS);
+					     }
+					   else if(hs_ret == -1)
+					     {
+						human_user->user->rem = REMOVE_USER;
+					     }
+					   matched = 1;
+					}
+				   }
+				 else
+#endif
+				 {
+				    socket_action(human_user->user);
+				    matched = 1;
+				 }
 			      }
 			 }
 		       /* Using a temporary user instead of user = user->next;
@@ -321,7 +373,10 @@ void get_socket_action(void)
      FD_SET(admin_listening_socket, &fds);
    if(listening_socket != -1)
      FD_SET(listening_socket, &fds);
-
+#ifdef HAVE_SSL
+   if(tls_listening_socket != -1)
+     FD_SET(tls_listening_socket, &fds);
+#endif
 
    if(pid > 0)
      {
@@ -365,6 +420,15 @@ void get_socket_action(void)
 	return;
      }
 
+#ifdef HAVE_SSL
+   /* Check if it's a new TLS connection */
+   if((tls_listening_socket != -1) && FD_ISSET(tls_listening_socket, &fds))
+     {
+	new_human_user(tls_listening_socket);
+	return;
+     }
+#endif
+
    /* Or if it's a new forked process */
    if((FD_ISSET(listening_unx_socket, &fds)) && (pid > 0))
      new_forked_process();
@@ -400,6 +464,34 @@ void get_socket_action(void)
 	  {
 	     if(FD_ISSET(human_user->user->sock, &fds))
 	       {
+#ifdef HAVE_SSL
+		  if(human_user->user->ssl != NULL
+		     && human_user->user->ssl_handshake_done == 0)
+		    {
+		       /* Check handshake timeout */
+		       if(human_user->user->ssl_handshake_start != 0
+			  && (time(NULL) - human_user->user->ssl_handshake_start) > SSL_HANDSHAKE_TIMEOUT)
+			 {
+			    logprintf(2, "TLS handshake timeout for %s\n", human_user->user->hostname);
+			    human_user->user->rem = REMOVE_USER;
+			 }
+		       else
+			 {
+			    int hs_ret = ssl_do_handshake(human_user->user);
+			    if(hs_ret == 1)
+			      {
+				 send_lock(human_user->user);
+				 hub_mess(human_user->user, INIT_MESS);
+			      }
+			    else if(hs_ret == -1)
+			      {
+				 human_user->user->rem = REMOVE_USER;
+			      }
+			 }
+		       human_user = next_human_user;
+		       continue;
+		    }
+#endif
 		  socket_action(human_user->user);
 		  return;
 	       }
@@ -1140,7 +1232,15 @@ void send_to_user(char *buf, struct user_t *user)
 	     send_buf = user->outbuf;
 	  }
 	len = len2 = strlen(send_buf);
-	if(sendall(user->sock, send_buf, &len) == -1)
+	{
+	   int send_result;
+#ifdef HAVE_SSL
+	   if(user->ssl != NULL)
+	     send_result = ssl_sendall(user->ssl, send_buf, &len);
+	   else
+#endif
+	     send_result = sendall(user->sock, send_buf, &len);
+	   if(send_result == -1)
 	  {
 	     if(user->outbuf == NULL)
 	       {
@@ -1205,5 +1305,151 @@ void send_to_user(char *buf, struct user_t *user)
 	     free(user->outbuf);
 	     user->outbuf = NULL;
 	  }
+	}
      }
 }
+
+#ifdef HAVE_SSL
+/* Log all queued OpenSSL errors */
+static void log_ssl_errors(const char *context)
+{
+   unsigned long err;
+   char errbuf[256];
+   while((err = ERR_get_error()) != 0)
+     {
+	ERR_error_string_n(err, errbuf, sizeof(errbuf));
+	logprintf(1, "OpenSSL error [%s]: %s\n", context, errbuf);
+     }
+}
+
+/* Initialize the SSL context with certificate and key */
+int init_ssl_ctx(void)
+{
+   ssl_ctx = SSL_CTX_new(TLS_server_method());
+   if(ssl_ctx == NULL)
+     {
+	logprintf(1, "Error - init_ssl_ctx(): SSL_CTX_new() failed\n");
+	log_ssl_errors("SSL_CTX_new");
+	return -1;
+     }
+
+   /* Require TLS 1.2 minimum */
+   SSL_CTX_set_min_proto_version(ssl_ctx, TLS1_2_VERSION);
+
+   /* Configure strong cipher suites */
+   SSL_CTX_set_cipher_list(ssl_ctx,
+      "ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:DHE+CHACHA20:!aNULL:!MD5:!DSS:!RC4:!3DES");
+
+   /* Disable TLS renegotiation and compression */
+   SSL_CTX_set_options(ssl_ctx,
+#ifdef SSL_OP_NO_RENEGOTIATION
+      SSL_OP_NO_RENEGOTIATION |
+#endif
+      SSL_OP_NO_COMPRESSION | SSL_OP_CIPHER_SERVER_PREFERENCE);
+
+   /* Disable session cache (each connection gets a fresh session) */
+   SSL_CTX_set_session_cache_mode(ssl_ctx, SSL_SESS_CACHE_OFF);
+
+   /* Load certificate */
+   if(SSL_CTX_use_certificate_file(ssl_ctx, tls_cert_file, SSL_FILETYPE_PEM) <= 0)
+     {
+	logprintf(1, "Error - init_ssl_ctx(): Failed to load certificate from %s\n", tls_cert_file);
+	log_ssl_errors("load_cert");
+	SSL_CTX_free(ssl_ctx);
+	ssl_ctx = NULL;
+	return -1;
+     }
+
+   /* Load private key */
+   if(SSL_CTX_use_PrivateKey_file(ssl_ctx, tls_key_file, SSL_FILETYPE_PEM) <= 0)
+     {
+	logprintf(1, "Error - init_ssl_ctx(): Failed to load private key from %s\n", tls_key_file);
+	log_ssl_errors("load_key");
+	SSL_CTX_free(ssl_ctx);
+	ssl_ctx = NULL;
+	return -1;
+     }
+
+   /* Verify that cert and key match */
+   if(!SSL_CTX_check_private_key(ssl_ctx))
+     {
+	logprintf(1, "Error - init_ssl_ctx(): Certificate and private key do not match\n");
+	log_ssl_errors("check_key");
+	SSL_CTX_free(ssl_ctx);
+	ssl_ctx = NULL;
+	return -1;
+     }
+
+   return 0;
+}
+
+/* Free the SSL context */
+void cleanup_ssl_ctx(void)
+{
+   if(ssl_ctx != NULL)
+     {
+	SSL_CTX_free(ssl_ctx);
+	ssl_ctx = NULL;
+     }
+}
+
+/* SSL version of sendall - sends all data via SSL_write */
+int ssl_sendall(SSL *ssl, char *buf, int *len)
+{
+   register int total = 0;
+   register int bytesleft = *len;
+   register int n = 0;
+   int ssl_err;
+   int retries = 0;
+
+   while(total < *len)
+     {
+	n = SSL_write(ssl, buf + total, bytesleft);
+	if(n <= 0)
+	  {
+	     ssl_err = SSL_get_error(ssl, n);
+	     if(ssl_err == SSL_ERROR_WANT_WRITE)
+	       {
+		  if(++retries > 100)
+		    {
+		       *len = total;
+		       return -1;
+		    }
+		  usleep(1000);
+		  continue;
+	       }
+	     *len = total;
+	     return -1;
+	  }
+	retries = 0;
+	total += n;
+	bytesleft -= n;
+     }
+
+   *len = total;
+   return 0;
+}
+
+/* Perform or continue an SSL handshake for a user.
+ * Returns: 1 = done, 0 = in progress, -1 = failed */
+int ssl_do_handshake(struct user_t *user)
+{
+   int ret;
+   int ssl_err;
+
+   ret = SSL_accept(user->ssl);
+   if(ret == 1)
+     {
+	user->ssl_handshake_done = 1;
+	return 1;
+     }
+
+   ssl_err = SSL_get_error(user->ssl, ret);
+   if(ssl_err == SSL_ERROR_WANT_READ || ssl_err == SSL_ERROR_WANT_WRITE)
+     return 0;
+
+   /* Handshake failed */
+   log_ssl_errors("SSL_accept");
+   return -1;
+}
+#endif

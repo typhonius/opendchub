@@ -142,6 +142,14 @@ int    max_desc_len = 0;
 BYTE   crypt_enable = 0;
 int    current_forked = 0;
 
+#ifdef HAVE_SSL
+SSL_CTX *ssl_ctx = NULL;
+unsigned int tls_port = 0;
+int    tls_listening_socket = -1;
+char   tls_cert_file[MAX_FDP_LEN+1] = {0};
+char   tls_key_file[MAX_FDP_LEN+1] = {0};
+#endif
+
 /* Set default variables, used if config does not exist or is bad */
 int set_default_vars(void)
 {
@@ -215,17 +223,25 @@ void kill_forked_process(void)
      }
    
    if(admin_listening_socket != -1)
-     {	
+     {
 	while(((erret =  close(admin_listening_socket)) != 0) && (errno == EINTR))
-	  logprintf(1, "Error - In kill_forked_process()/close(): Interrupted system call. Trying again.\n");	
-	
+	  logprintf(1, "Error - In kill_forked_process()/close(): Interrupted system call. Trying again.\n");
+
 	if(erret != 0)
-	  {	
+	  {
 	     logprintf(1, "Error - In kill_forked_process()/close(): ");
 	     logerror(1, errno);
-	  }  
+	  }
      }
-   
+
+#ifdef HAVE_SSL
+   if(tls_listening_socket != -1)
+     {
+	close(tls_listening_socket);
+	tls_listening_socket = -1;
+     }
+#endif
+
    exit(EXIT_SUCCESS);
 }
 
@@ -286,9 +302,14 @@ void new_forked_process(void)
    user->rem = 0;
    user->buf = NULL;
    user->outbuf = NULL;
+#ifdef HAVE_SSL
+   user->ssl = NULL;
+   user->ssl_handshake_done = 0;
+   user->ssl_handshake_start = (time_t)0;
+#endif
    snprintf(user->hostname, sizeof(user->hostname), "forked_process");
    memset(user->nick, 0, MAX_NICK_LEN+1);
-   
+
    /* Add the user at the first place in the list.  */
    add_non_human_to_list(user);
    
@@ -371,8 +392,18 @@ void fork_process(void)
 	if((admin_listening_socket = get_listening_socket(admin_port, admin_localhost)) == -1)
 	  {
 	     logprintf(1, "Admin listening socket disabled\n");
-	  }	
-	
+	  }
+
+#ifdef HAVE_SSL
+	if(tls_port != 0 && ssl_ctx != NULL)
+	  {
+	     if((tls_listening_socket = get_listening_socket(tls_port, 0)) == -1)
+	       {
+		  logprintf(1, "TLS listening socket disabled\n");
+	       }
+	  }
+#endif
+
 	/* And connect to parent process */
 	if((sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) 
 	  {
@@ -407,6 +438,11 @@ void fork_process(void)
 	user->rem = 0;
 	user->buf = NULL;
 	user->outbuf = NULL;
+#ifdef HAVE_SSL
+	user->ssl = NULL;
+	user->ssl_handshake_done = 0;
+	user->ssl_handshake_start = (time_t)0;
+#endif
 	memset(user->nick, 0, MAX_NICK_LEN+1);
 	snprintf(user->hostname, sizeof(user->hostname), "parent_process");
 
@@ -483,7 +519,11 @@ void switch_listening_process(char *buf, struct user_t *user)
 			 logprintf(1, "Error - In switch_listening_process(): Couldn't open listening socket\n");
 		       
 		       admin_listening_socket = get_listening_socket(admin_port, admin_localhost);
-		    }	
+#ifdef HAVE_SSL
+		       if(tls_port != 0 && ssl_ctx != NULL)
+			 tls_listening_socket = get_listening_socket(tls_port, 0);
+#endif
+		    }
 	       }
 	  }
 	else
@@ -1147,8 +1187,15 @@ int handle_command(char *buf, struct user_t *user)
 		  if(user->type == FORKED)
 		    {
 		       if(strncmp(temp, "$OpList ", 8) == 0)
-			 /* The oplist ends with two '|' */
-			 strcat(temp, "|");
+			 {
+			    /* The oplist ends with two '|' */
+			    size_t tlen = strlen(temp);
+			    if(tlen < MAX_MESS_SIZE)
+			      {
+				 temp[tlen] = '|';
+				 temp[tlen+1] = '\0';
+			      }
+			 }
 		       send_to_non_humans(temp, FORKED, user);
 		       send_to_humans(temp, REGULAR | REGISTERED | OP 
 				      | OP_ADMIN, user);       
@@ -1856,11 +1903,47 @@ int new_human_user(int sock)
    user->outbuf = NULL;
    user->rem = 0;
    user->last_search = (time_t)0;
-   
+#ifdef HAVE_SSL
+   user->ssl = NULL;
+   user->ssl_handshake_done = 0;
+   user->ssl_handshake_start = (time_t)0;
+#endif
+
    snprintf(user->nick, sizeof(user->nick), "Non_logged_in_user");
-   
+
+#ifdef HAVE_SSL
+   /* If this is a TLS connection, set up SSL */
+   if(sock == tls_listening_socket && ssl_ctx != NULL)
+     {
+	int hs_ret;
+	user->ssl = SSL_new(ssl_ctx);
+	if(user->ssl == NULL)
+	  {
+	     logprintf(1, "Error - In new_human_user(): SSL_new() failed\n");
+	     close(user->sock);
+	     free(user);
+	     return -1;
+	  }
+	SSL_set_fd(user->ssl, user->sock);
+	user->ssl_handshake_start = time(NULL);
+	hs_ret = ssl_do_handshake(user);
+	if(hs_ret == -1)
+	  {
+	     /* Handshake failed immediately - plain client on TLS port */
+	     SSL_free(user->ssl);
+	     close(user->sock);
+	     free(user);
+	     return 1;
+	  }
+     }
+#endif
+
    /* Check if hub is full */
-   if(sock == listening_socket)
+   if(sock == listening_socket
+#ifdef HAVE_SSL
+      || sock == tls_listening_socket
+#endif
+      )
      {
 	if((count_all_users()) >= max_users)
 	  {
@@ -1869,16 +1952,24 @@ int new_human_user(int sock)
 	       {
 		  uprintf(user, "$ForceMove %s|", redirect_host);
 	       }
-	     
+
+#ifdef HAVE_SSL
+	     if(user->ssl != NULL)
+	       {
+		  SSL_shutdown(user->ssl);
+		  SSL_free(user->ssl);
+		  user->ssl = NULL;
+	       }
+#endif
 	     while(((erret =  close(user->sock)) != 0) && (errno == EINTR))
-	       logprintf(1, "Error - In new_human_user()/close(): Interrupted system call. Trying again.\n");	
-	     
+	       logprintf(1, "Error - In new_human_user()/close(): Interrupted system call. Trying again.\n");
+
 	     if(erret != 0)
-	       {	
+	       {
 		  logprintf(1, "Error - In new_human_user()/close(): ");
 		  logerror(1, errno);
-	       }   
-	    
+	       }
+
 	     free(user);
 	     return 1;
 	  }
@@ -1897,15 +1988,23 @@ int new_human_user(int sock)
 		  hub_mess(user, BAN_MESS);
 		  inet_ntop(AF_INET, &client.sin_addr, ip_str, sizeof(ip_str));
 		  logprintf(4, "User %s from %s (%s) denied\n",  user->nick, user->hostname, ip_str);
+#ifdef HAVE_SSL
+		  if(user->ssl != NULL)
+		    {
+		       SSL_shutdown(user->ssl);
+		       SSL_free(user->ssl);
+		       user->ssl = NULL;
+		    }
+#endif
 		  while(((erret =  close(user->sock)) != 0) && (errno == EINTR))
-		    logprintf(1, "Error - In new_human_user()/close(): Interrupted system call. Trying again.\n");	
-		  
+		    logprintf(1, "Error - In new_human_user()/close(): Interrupted system call. Trying again.\n");
+
 		  if(erret != 0)
-		    {	
+		    {
 		       logprintf(1, "Error - In new_human_user()/close(): ");
 		       logerror(1, errno);
-		    }  
-		  
+		    }
+
 		  free(user);
 		  return 1;
 	       }	
@@ -1918,30 +2017,46 @@ int new_human_user(int sock)
 		  hub_mess(user, BAN_MESS);
 		  inet_ntop(AF_INET, &client.sin_addr, ip_str, sizeof(ip_str));
 		  logprintf(4, "User %s from %s (%s) denied\n",  user->nick, user->hostname, ip_str);
+#ifdef HAVE_SSL
+		  if(user->ssl != NULL)
+		    {
+		       SSL_shutdown(user->ssl);
+		       SSL_free(user->ssl);
+		       user->ssl = NULL;
+		    }
+#endif
 		  while(((erret =  close(user->sock)) != 0) && (errno == EINTR))
-		    logprintf(1, "Error - In new_human_user()/close(): Interrupted system call. Trying again.\n");	
-		  
+		    logprintf(1, "Error - In new_human_user()/close(): Interrupted system call. Trying again.\n");
+
 		  if(erret != 0)
-		    {	
+		    {
 		       logprintf(1, "Error - In new_human_user()/close(): ");
 		       logerror(1, errno);
-		    }  
-		  
+		    }
+
 		  free(user);
 		  return 1;
 	       }	
 	  }
 	
 	if((banret == -1) || (allowret == -1))
-	  {	
+	  {
+#ifdef HAVE_SSL
+	     if(user->ssl != NULL)
+	       {
+		  SSL_shutdown(user->ssl);
+		  SSL_free(user->ssl);
+		  user->ssl = NULL;
+	       }
+#endif
 	     while(((erret =  close(user->sock)) != 0) && (errno == EINTR))
-	       logprintf(1, "Error - In new_human_user()/close(): Interrupted system call. Trying again.\n");	
-	     
+	       logprintf(1, "Error - In new_human_user()/close(): Interrupted system call. Trying again.\n");
+
 	     if(erret != 0)
-	       {	
+	       {
 		  logprintf(1, "Error - In new_human_user()/close(): ");
 		  logerror(1, errno);
-	       }  
+	       }
 	     free(user);
 	     return -1;
 	  }   
@@ -1962,16 +2077,30 @@ int new_human_user(int sock)
    
    if(sock == listening_socket)
      logprintf(4, "New connection on socket %d from user at %s\n", user->sock, user->hostname);
+#ifdef HAVE_SSL
+   else if(sock == tls_listening_socket)
+     logprintf(4, "New TLS connection on socket %d from user at %s\n", user->sock, user->hostname);
+#endif
    else if(sock == admin_listening_socket)
      logprintf(4, "New admin connection on socket %d from user at %s\n", user->sock, user->hostname);
 
-   /* If it's a regular user.  */
-   if(sock == listening_socket)
+   /* If it's a regular user (plain or TLS).  */
+   if(sock == listening_socket
+#ifdef HAVE_SSL
+      || sock == tls_listening_socket
+#endif
+      )
      {
 	if(check_key != 0)
 	  user->type = UNKEYED;
-	send_lock(user);
-	hub_mess(user, INIT_MESS);
+#ifdef HAVE_SSL
+	/* Only send Lock if TLS handshake is already done (or no TLS) */
+	if(user->ssl == NULL || user->ssl_handshake_done != 0)
+#endif
+	  {
+	     send_lock(user);
+	     hub_mess(user, INIT_MESS);
+	  }
      }
    else if(sock == admin_listening_socket)
      {
@@ -2004,6 +2133,13 @@ int new_human_user(int sock)
 	
 	listening_socket = -1;
 	admin_listening_socket = -1;
+#ifdef HAVE_SSL
+	if(tls_listening_socket != -1)
+	  {
+	     close(tls_listening_socket);
+	     tls_listening_socket = -1;
+	  }
+#endif
 	send_to_user("$ClosedListen|", non_human_user_list);
      }   
 	
@@ -2030,17 +2166,25 @@ void remove_non_human(struct user_t *our_user)
    while(user != NULL)
      {
 	if(user == our_user)
-	  {	    
-	     if(our_user->type != LINKED) 
+	  {
+	     if(our_user->type != LINKED)
 	       {
+#ifdef HAVE_SSL
+		  if(our_user->ssl != NULL)
+		    {
+		       SSL_shutdown(our_user->ssl);
+		       SSL_free(our_user->ssl);
+		       our_user->ssl = NULL;
+		    }
+#endif
 		  while(((erret =  close(user->sock)) != 0) && (errno == EINTR))
-		    logprintf(1, "Error - In remove_non_human()/close(): Interrupted system call. Trying again.\n");	
-		  
+		    logprintf(1, "Error - In remove_non_human()/close(): Interrupted system call. Trying again.\n");
+
 		  if(erret != 0)
-		    {	
+		    {
 		       logprintf(1, "Error - In remove_non_human()/close(): ");
 		       logerror(1, errno);
-		    }  
+		    }
 	       }
 	     
 	     if(last_user == NULL)
@@ -2139,14 +2283,27 @@ void remove_human_user(struct user_t *user)
 	  add_total_share(-user->share);
      }
    
+#ifdef HAVE_SSL
+   if(user->ssl != NULL)
+     {
+	/* Best-effort unidirectional shutdown; don't wait for peer's close_notify
+	 * on a non-blocking socket — just send ours and move on. */
+	int shut_ret = SSL_shutdown(user->ssl);
+	if(shut_ret == 0)
+	  SSL_shutdown(user->ssl); /* Second call for bidirectional if possible */
+	SSL_free(user->ssl);
+	user->ssl = NULL;
+     }
+#endif
+
    while(((erret =  close(user->sock)) != 0) && (errno == EINTR))
-     logprintf(1, "Error - In remove_human_user()/close(): Interrupted system call. Trying again.\n");	
-   
+     logprintf(1, "Error - In remove_human_user()/close(): Interrupted system call. Trying again.\n");
+
    if(erret != 0)
-     {	
+     {
 	logprintf(1, "Error - In remove_human_user()/close(): ");
 	logerror(1, errno);
-     }  
+     }
    
    if(user->buf != NULL)
      {	     
@@ -2273,17 +2430,34 @@ int socket_action(struct user_t *user)
    int i = 0;
    
    command_buf = NULL;
-   
+
    /* Error or connection closed? */
-   while(((buf_len = recv(user->sock, buf, MAX_MESS_SIZE, 0)) == -1) 
+#ifdef HAVE_SSL
+   if(user->ssl != NULL)
+     {
+	buf_len = SSL_read(user->ssl, buf, MAX_MESS_SIZE);
+	if(buf_len <= 0)
+	  {
+	     int ssl_err = SSL_get_error(user->ssl, buf_len);
+	     if(ssl_err == SSL_ERROR_WANT_READ || ssl_err == SSL_ERROR_WANT_WRITE)
+	       return 0; /* Not ready yet, return to event loop */
+	     if(ssl_err == SSL_ERROR_ZERO_RETURN)
+	       buf_len = 0; /* Clean shutdown */
+	  }
+     }
+   else
+#endif
+   {
+   while(((buf_len = recv(user->sock, buf, MAX_MESS_SIZE, 0)) == -1)
 	 && ((errno == EAGAIN) || (errno == EINTR)))
      {
 	i++;
 	usleep(500);
 	/* Giving up after half a second */
 	if(i == 1000)
-	  break;	  		
+	  break;
      }
+   }
 
    if(buf_len <= 0)
      {	
@@ -2604,19 +2778,37 @@ void encrypt_pass(char* password)
 {
   unsigned long seed[2];
   char salt[] = "$1$........";
-  
+  const char *result;
+
   const char *const seedchars = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-  
+
   int i;
 
-  seed[0] = time(NULL);								/* Maybe using /dev/urandom. */
-  seed[1] = getpid() ^ (seed[0] >> 14 & 0x30000);
+  /* Use /dev/urandom for salt generation */
+  {
+     int ufd = open("/dev/urandom", O_RDONLY);
+     if(ufd >= 0 && read(ufd, seed, sizeof(seed)) == sizeof(seed))
+       { close(ufd); }
+     else
+       {
+	  if(ufd >= 0) close(ufd);
+	  seed[0] = time(NULL);
+	  seed[1] = getpid() ^ (seed[0] >> 14 & 0x30000);
+       }
+  }
 
   /* Turn it into printable characters from `seedchars'. */
   for (i = 0; i < 8; i++)
     salt[3+i] = seedchars[(seed[i/5] >> (i%5)*6) & 0x3f];
   if(crypt_enable != 0)
-    strcpy(password, crypt(password, salt));
+    {
+       result = crypt(password, salt);
+       if(result != NULL)
+	 {
+	    strncpy(password, result, MAX_ADMIN_PASS_LEN);
+	    password[MAX_ADMIN_PASS_LEN] = '\0';
+	 }
+    }
 }
 
  
@@ -2888,8 +3080,47 @@ int main(int argc, char *argv[])
      }
    
    listening_socket = -1;
-   
-   if((listening_unx_socket = get_listening_unx_socket()) == -1)     
+
+#ifdef HAVE_SSL
+   /* Check for port conflicts */
+   if(tls_port != 0 && (tls_port == listening_port || tls_port == admin_port))
+     {
+	printf("Error: tls_port %u conflicts with %s. Disabling TLS.\n",
+	       tls_port, tls_port == listening_port ? "listening_port" : "admin_port");
+	tls_port = 0;
+     }
+
+   /* Initialize SSL/TLS if configured */
+   if(tls_port != 0 && tls_cert_file[0] != '\0' && tls_key_file[0] != '\0')
+     {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+	SSL_library_init();
+	SSL_load_error_strings();
+#endif
+	if(init_ssl_ctx() == 0)
+	  {
+	     /* Test if we can open the TLS listening socket */
+	     int tls_test_sock = get_listening_socket(tls_port, 0);
+	     if(tls_test_sock == -1)
+	       {
+		  printf("TLS bind failed on port %u. Disabling TLS.\n", tls_port);
+		  cleanup_ssl_ctx();
+		  tls_port = 0;
+	       }
+	     else
+	       {
+		  close(tls_test_sock);
+	       }
+	  }
+	else
+	  {
+	     printf("SSL initialization failed. Disabling TLS.\n");
+	     tls_port = 0;
+	  }
+     }
+#endif
+
+   if((listening_unx_socket = get_listening_unx_socket()) == -1)
      return 1;
    
    if((listening_udp_socket = get_listening_udp_socket(listening_port)) == -1)
@@ -2909,7 +3140,11 @@ int main(int argc, char *argv[])
        printf("port %u\n", admin_port);
      }
    }
-   
+#ifdef HAVE_SSL
+   if(tls_port != 0 && ssl_ctx != NULL)
+     printf("and listening for TLS connections on port %u\n", tls_port);
+#endif
+
    /* With -d, for debug, we will run in console so skip this part. */
    if(debug == 0)
       {

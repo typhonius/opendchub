@@ -30,6 +30,13 @@ else
     fail "Perl scripting support NOT compiled in"
 fi
 
+# Test 2b: SSL support
+if grep -q "#define HAVE_SSL" /build/opendchub/config.h; then
+    pass "SSL/TLS support compiled in"
+else
+    fail "SSL/TLS support NOT compiled in"
+fi
+
 echo ""
 echo "========================================"
 echo "=== Source Code Fix Verification     ==="
@@ -162,20 +169,30 @@ echo "========================================"
 echo "=== Hub + Bot v4 Integration Test    ==="
 echo "========================================"
 
+# Generate self-signed TLS certificate
+openssl req -x509 -newkey rsa:2048 -keyout /root/.opendchub/hub.key \
+    -out /root/.opendchub/hub.crt -days 1 -nodes -subj "/CN=localhost" 2>/dev/null
+chmod 600 /root/.opendchub/hub.key /root/.opendchub/hub.crt
+
 # Set up hub config
 mkdir -p /root/.opendchub/scripts
 cat > /root/.opendchub/config << 'HUBCONF'
-hub_name = TestHub
+hub_name = "TestHub"
 max_users = 50
-hub_description = Integration Test Hub
+hub_description = "Integration Test Hub"
+hub_full_mess = "Sorry, this hub is full at the moment"
 listening_port = 4111
 admin_port = 53696
-admin_pass = testpass
-default_pass =
+admin_pass = "testpass"
+default_pass = ""
+link_pass = "linkpass"
 min_share = 0
 registered_only = 0
-hub_hostname = localhost
+hub_hostname = "localhost"
 verbosity = 5
+tls_port = 4112
+tls_cert_file = "/root/.opendchub/hub.crt"
+tls_key_file = "/root/.opendchub/hub.key"
 HUBCONF
 
 touch /root/.opendchub/banlist
@@ -253,8 +270,8 @@ mkdir -p /root/.opendchub/logs
 # Start the hub from the home dir.
 cd /root/.opendchub/scripts
 
-# Start hub with piped config answers (port, admin_pass, link_pass)
-printf "4111\ntestpass\nlinkpass\n" | /build/opendchub/src/opendchub -d &
+# Start hub (config file already has all settings)
+/build/opendchub/src/opendchub -d &
 HUB_PID=$!
 echo "  Starting hub (PID: $HUB_PID)..."
 sleep 3
@@ -276,6 +293,42 @@ if nc -z localhost 4111 2>/dev/null; then
         pass "Admin port 53696 listening"
     else
         fail "Admin port not listening"
+    fi
+
+    echo ""
+    echo "========================================"
+    echo "=== TLS Verification                 ==="
+    echo "========================================"
+
+    # Test: TLS port listening
+    if nc -z localhost 4112 2>/dev/null; then
+        pass "TLS port 4112 listening"
+    else
+        fail "TLS port 4112 not listening"
+    fi
+
+    # Test: TLS handshake succeeds
+    TLS_RESULT=$(echo "" | timeout 3 openssl s_client -connect localhost:4112 -verify_return_error 2>&1 || true)
+    if echo "$TLS_RESULT" | grep -q "BEGIN CERTIFICATE\|SSL handshake\|Verify return code: 0\|self-signed"; then
+        pass "TLS handshake succeeds (openssl s_client)"
+    else
+        fail "TLS handshake failed (openssl s_client)"
+    fi
+
+    # Test: Plain text rejected on TLS port
+    PLAIN_ON_TLS=$(echo "Hello" | timeout 2 nc -w 1 localhost 4112 2>/dev/null || true)
+    if echo "$PLAIN_ON_TLS" | grep -q "Lock"; then
+        fail "Plain text accepted on TLS port (should be rejected)"
+    else
+        pass "Plain text rejected on TLS port"
+    fi
+
+    # Test: Plain port still works normally (no TLS interference)
+    PLAIN_CHECK=$(echo "" | timeout 3 nc -w 2 localhost 4111 2>/dev/null || true)
+    if echo "$PLAIN_CHECK" | grep -q "Lock"; then
+        pass "Plain port 4111 still works normally"
+    else
+        fail "Plain port 4111 broken after TLS setup"
     fi
 
     # Test: Gaglist file operations
