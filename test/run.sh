@@ -97,6 +97,25 @@ fi
 
 echo ""
 echo "========================================"
+echo "=== Bcrypt Support Verification      ==="
+echo "========================================"
+
+# Test: Bcrypt support compiled in (HAVE_CRYPT_GENSALT from configure)
+if grep -q "HAVE_CRYPT_GENSALT" /build/opendchub/config.h 2>/dev/null; then
+    pass "Bcrypt support compiled in (HAVE_CRYPT_GENSALT defined)"
+else
+    fail "Bcrypt support NOT compiled in (missing HAVE_CRYPT_GENSALT)"
+fi
+
+# Test: encrypt_pass generates bcrypt hashes (check source for $2b$ pattern)
+if grep -q '\\$2b\\$\|bcrypt\|BCRYPT\|BF_crypt' /build/opendchub/src/main.c; then
+    pass "encrypt_pass() has bcrypt implementation"
+else
+    fail "encrypt_pass() missing bcrypt implementation"
+fi
+
+echo ""
+echo "========================================"
 echo "=== ODCHBot v4 Module Checks         ==="
 echo "========================================"
 

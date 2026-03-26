@@ -1590,12 +1590,18 @@ int check_pass(char *buf, struct user_t *user)
    FILE *fp;
    char path[MAX_FDP_LEN+1];
    char line[1024];
-   char reg_passwd[51];
-   char this_passwd[51];
+   char reg_passwd[MAX_ADMIN_PASS_LEN+1];
+   char this_passwd[MAX_ADMIN_PASS_LEN+1];
    char* tmp;
-   
-   strncpy(this_passwd,buf,50);
-   this_passwd[strlen(this_passwd)-1] = '\0';	
+
+   strncpy(this_passwd,buf,MAX_ADMIN_PASS_LEN);
+   this_passwd[MAX_ADMIN_PASS_LEN] = '\0';
+   /* Remove trailing pipe delimiter */
+   {
+      int plen = strlen(this_passwd);
+      if(plen > 0 && this_passwd[plen-1] == '|')
+        this_passwd[plen-1] = '\0';
+   }
    
    snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, REG_FILE);
    
@@ -1699,52 +1705,81 @@ int check_pass(char *buf, struct user_t *user)
 		  
 		  /* The password check. */
 
-		  strncpy(reg_passwd,line+i,50);
-		  reg_passwd[strlen(reg_passwd)-2] = '\0';
+		  strncpy(reg_passwd,line+i,MAX_ADMIN_PASS_LEN);
+		  reg_passwd[MAX_ADMIN_PASS_LEN] = '\0';
+		  /* Strip trailing space + type digit */
+		  {
+		     int rlen = strlen(reg_passwd);
+		     while(rlen > 0 && (reg_passwd[rlen-1] == ' '
+			   || reg_passwd[rlen-1] == '0'
+			   || reg_passwd[rlen-1] == '1'
+			   || reg_passwd[rlen-1] == '2'
+			   || reg_passwd[rlen-1] == '\n'
+			   || reg_passwd[rlen-1] == '\r'))
+		       rlen--;
+		     reg_passwd[rlen] = '\0';
+		  }
 
 		  if(crypt_enable != 0)
 		    tmp = crypt(this_passwd,reg_passwd);
 		  else
 		    tmp = this_passwd;
 
-		  if(strcmp(tmp,reg_passwd) == 0) 
+		  if(tmp != NULL && strcmp(tmp,reg_passwd) == 0)
 		    {
 		       /* Users password is correct */
+		       int user_type_code;
 
 		       set_lock(fd, F_UNLCK);
-		       
+
 		       while(((erret = fclose(fp)) != 0) && (errno == EINTR))
 			 logprintf(1, "Error - In check_pass()/fclose(): Interrupted system call. Trying again.\n");
-		       
+
 		       if(erret != 0)
 			 {
 			    logprintf(1, "Error - In check_pass()/fclose(): ");
 			    logerror(1, errno);
 			    return -1;
 			 }
-		       	 
+
 		       while(line[j] == ' ')
 			 j++;
 		       if(line[j] == '2')
-			 {
-			    /* User is OP Admin */
-			    return 4;
-			 }
+			 user_type_code = 4;  /* OP Admin */
 		       else if(line[j] == '1')
-			 {
-			    /* User is OP */
-			    return 3;
-			 }
+			 user_type_code = 3;  /* OP */
 		       else if(line[j] == '0')
-			 {
-			    /* User is registered */
-			    return 2;
-			 }
+			 user_type_code = 2;  /* Registered */
 		       else
 			 {
 			    logprintf(1, "Error - In check_pass(): Erroneous line in file\n");
 			    return -1;
 			 }
+
+#ifdef HAVE_CRYPT_GENSALT
+		       /* Auto-upgrade non-bcrypt hashes to bcrypt on successful login */
+		       if(crypt_enable != 0 && strncmp(reg_passwd, "$2", 2) != 0)
+			 {
+			    char upgrade_pass[MAX_ADMIN_PASS_LEN+1];
+			    strncpy(upgrade_pass, this_passwd, MAX_ADMIN_PASS_LEN);
+			    upgrade_pass[MAX_ADMIN_PASS_LEN] = '\0';
+			    encrypt_pass(upgrade_pass);
+			    if(strncmp(upgrade_pass, "$2", 2) == 0)
+			      {
+				 /* Replace reglist entry with bcrypt hash using direct file ops */
+				 char upgrade_path[MAX_FDP_LEN+1];
+				 char new_line[MAX_ADMIN_PASS_LEN + MAX_NICK_LEN + 10];
+				 snprintf(upgrade_path, MAX_FDP_LEN, "%s/%s", config_dir, REG_FILE);
+				 remove_line_from_file(user->nick, upgrade_path, 0);
+				 snprintf(new_line, sizeof(new_line), "%s %s %c",
+					  user->nick, upgrade_pass, line[j]);
+				 add_line_to_file(new_line, upgrade_path);
+				 logprintf(1, "Upgraded password hash to bcrypt for %s\n", user->nick);
+			      }
+			 }
+#endif
+
+		       return user_type_code;
 		    }
 		  else
 		    {
@@ -2102,14 +2137,14 @@ int add_reg_user(char *buf, struct user_t *user)
    int ret;
    char command[21];
    char nick[MAX_NICK_LEN+1];
-   char pass[51];
+   char pass[MAX_ADMIN_PASS_LEN+1];
    char path[MAX_FDP_LEN+1];
-   char line[51 + MAX_NICK_LEN + 2];
+   char line[MAX_ADMIN_PASS_LEN + MAX_NICK_LEN + 10];
    int  type;
-   
+
    snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, REG_FILE);
-   
-   if(sscanf(buf, "%20s %50s %50s %d|", command, nick, pass, &type) != 4)
+
+   if(sscanf(buf, "%20s %50s %120s %d|", command, nick, pass, &type) != 4)
      return 2;
    
    if((pass[0] == '\0') || ((type != 0) && (type != 1) && (type != 2)))

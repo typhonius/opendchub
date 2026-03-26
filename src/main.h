@@ -39,7 +39,7 @@
 #define MAX_MESS_SIZE      0xFFFF          /* Maximum size of a received message */
 #define MAX_HUB_NAME       25              /* Maximum length of hub name, 25 from win version */
 #define MAX_HUB_DESC       100             /* Maximum length of hub description */
-#define MAX_ADMIN_PASS_LEN 50              /* Maximum length of admin pass */
+#define MAX_ADMIN_PASS_LEN 120             /* Maximum length of admin pass (bcrypt hashes are 60 chars) */
 #define MAX_BUF_SIZE       1000000         /* Maximum length of users buf */
 #define MAX_FDP_LEN	   100		   /* Maximum length of file/dir/path variables */
 #define USER_LIST_ENT_SIZE 173             /* Size of an entry in the user list, 

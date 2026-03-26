@@ -1430,6 +1430,61 @@ int handle_command(char *buf, struct user_t *user)
 		       uprintf(user, "\r\n");
 		    }
 	       }
+	     else if(strncasecmp(temp, "$GetStatus", 10) == 0)
+	       {
+		  if(user->type == ADMIN)
+		    {
+		       int ops_count;
+		       time_t now = time(NULL);
+		       long uptime_secs = (long)(now - hub_start_time);
+		       ops_count = count_users(OP | OP_ADMIN);
+		       uprintf(user, "\r\nSTATUS hub_name|%s\r\n", hub_name);
+		       uprintf(user, "STATUS users_online|%d\r\n", count_all_users());
+		       uprintf(user, "STATUS total_share|%lld\r\n", get_total_share());
+		       uprintf(user, "STATUS uptime|%ld\r\n", uptime_secs);
+		       uprintf(user, "STATUS hub_port|%u\r\n", listening_port);
+#ifdef HAVE_SSL
+		       uprintf(user, "STATUS tls_port|%u\r\n", tls_port);
+#endif
+		       uprintf(user, "STATUS max_users|%d\r\n", max_users);
+		       uprintf(user, "STATUS ops_online|%d\r\n", ops_count);
+		       uprintf(user, "STATUS END|\r\n");
+		    }
+	       }
+	     else if(strncasecmp(temp, "$GetUserList", 12) == 0)
+	       {
+		  if(user->type == ADMIN)
+		    {
+		       struct sock_t *hu;
+		       hu = human_sock_list;
+		       uprintf(user, "\r\n");
+		       while(hu != NULL)
+			 {
+			    if((hu->user->type & (REGULAR | REGISTERED | OP | OP_ADMIN)) != 0)
+			      {
+				 char *type_str;
+				 if(hu->user->type == OP_ADMIN)
+				   type_str = "OP_ADMIN";
+				 else if(hu->user->type == OP)
+				   type_str = "OP";
+				 else if(hu->user->type == REGISTERED)
+				   type_str = "REGISTERED";
+				 else
+				   type_str = "REGULAR";
+				 uprintf(user, "USER %s|%s|%lld|%s|%s|%s|%d\r\n",
+					 hu->user->nick,
+					 hu->user->hostname,
+					 hu->user->share,
+					 type_str,
+					 hu->user->desc ? hu->user->desc : "",
+					 hu->user->email ? hu->user->email : "",
+					 hu->user->con_type);
+			      }
+			    hu = hu->next;
+			 }
+		       uprintf(user, "USER END|\r\n");
+		    }
+	       }
 	     else if(strncasecmp(temp, "$AddRegUser ", 12) == 0)
 	       {
 		  if((user->type & (ADMIN | SCRIPT)) != 0)
@@ -2773,42 +2828,74 @@ int udp_action(void)
 }
   
 
-/* Takes password and encrypts it. http://www.gnu.org/manual/glibc-2.2.5/html_node/crypt.html */ 
+/* Takes password and encrypts it using bcrypt (preferred) or MD5 crypt fallback */
 void encrypt_pass(char* password)
 {
-  unsigned long seed[2];
-  char salt[] = "$1$........";
   const char *result;
+  char entropy[16];
 
-  const char *const seedchars = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  if(crypt_enable == 0)
+    return;
 
-  int i;
-
-  /* Use /dev/urandom for salt generation */
+  /* Read entropy from /dev/urandom */
   {
      int ufd = open("/dev/urandom", O_RDONLY);
-     if(ufd >= 0 && read(ufd, seed, sizeof(seed)) == sizeof(seed))
-       { close(ufd); }
+     if(ufd >= 0)
+       {
+	  if(read(ufd, entropy, sizeof(entropy)) != sizeof(entropy))
+	    {
+	       /* Fallback: seed with time+pid */
+	       unsigned long seed[2];
+	       seed[0] = time(NULL);
+	       seed[1] = getpid() ^ (seed[0] >> 14 & 0x30000);
+	       memcpy(entropy, seed, sizeof(seed) < sizeof(entropy) ? sizeof(seed) : sizeof(entropy));
+	    }
+	  close(ufd);
+       }
      else
        {
-	  if(ufd >= 0) close(ufd);
+	  unsigned long seed[2];
 	  seed[0] = time(NULL);
 	  seed[1] = getpid() ^ (seed[0] >> 14 & 0x30000);
+	  memcpy(entropy, seed, sizeof(seed) < sizeof(entropy) ? sizeof(seed) : sizeof(entropy));
        }
   }
 
-  /* Turn it into printable characters from `seedchars'. */
-  for (i = 0; i < 8; i++)
-    salt[3+i] = seedchars[(seed[i/5] >> (i%5)*6) & 0x3f];
-  if(crypt_enable != 0)
-    {
-       result = crypt(password, salt);
-       if(result != NULL)
-	 {
-	    strncpy(password, result, MAX_ADMIN_PASS_LEN);
-	    password[MAX_ADMIN_PASS_LEN] = '\0';
-	 }
-    }
+#ifdef HAVE_CRYPT_GENSALT
+  /* Use bcrypt ($2b$) with cost factor 12 */
+  {
+     char *salt = crypt_gensalt("$2b$", 12, entropy, sizeof(entropy));
+     if(salt != NULL)
+       {
+	  result = crypt(password, salt);
+	  if(result != NULL && strncmp(result, "$2", 2) == 0)
+	    {
+	       strncpy(password, result, MAX_ADMIN_PASS_LEN);
+	       password[MAX_ADMIN_PASS_LEN] = '\0';
+	       return;
+	    }
+       }
+     /* If bcrypt fails, fall through to MD5 crypt */
+     logprintf(1, "Warning: bcrypt failed, falling back to MD5 crypt\n");
+  }
+#endif
+
+  /* Fallback: MD5 crypt ($1$) */
+  {
+     const char *const seedchars = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+     char salt[] = "$1$........";
+     unsigned long seed[2];
+     int i;
+     memcpy(seed, entropy, sizeof(seed));
+     for (i = 0; i < 8; i++)
+       salt[3+i] = seedchars[(seed[i/5] >> (i%5)*6) & 0x3f];
+     result = crypt(password, salt);
+     if(result != NULL)
+       {
+	  strncpy(password, result, MAX_ADMIN_PASS_LEN);
+	  password[MAX_ADMIN_PASS_LEN] = '\0';
+       }
+  }
 }
 
  
