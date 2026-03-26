@@ -442,24 +442,25 @@ void chat(char *buf, struct user_t *user)
      {
 	if(strncasecmp(chatstring, "!setpass ", 9) == 0)
 	  {
+	     char newpass[MAX_ADMIN_PASS_LEN+1];
 	     temp = strchr(chatstring, ' ') + 1;
-	     
-	     /* Using path here and tempstr a few lines down might be a bad idea. */	   
-	     strncpy(path,temp,MAX_FDP_LEN); 
-	     
+
+	     strncpy(newpass,temp,MAX_ADMIN_PASS_LEN);
+	     newpass[MAX_ADMIN_PASS_LEN] = '\0';
+
 	     if(remove_reg_user(user->nick, user) > 0)
-	       {		
-		  encrypt_pass(path);
-		  
+	       {
+		  encrypt_pass(newpass);
+
 		  if (user->type == OP_ADMIN)
-		    snprintf(tempstr, MAX_HOST_LEN, "%s %s %d", user->nick, path, 2);
+		    snprintf(tempstr, MAX_HOST_LEN, "%s %s %d", user->nick, newpass, 2);
 		  else if (user->type == OP)
-		    snprintf(tempstr, MAX_HOST_LEN, "%s %s %d", user->nick, path, 1);
+		    snprintf(tempstr, MAX_HOST_LEN, "%s %s %d", user->nick, newpass, 1);
 		  else
-		    snprintf(tempstr, MAX_HOST_LEN, "%s %s %d", user->nick, path, 0);
-		  
+		    snprintf(tempstr, MAX_HOST_LEN, "%s %s %d", user->nick, newpass, 0);
+
 		  snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, REG_FILE);
-		  
+
 		  if (add_line_to_file(tempstr, path) > 0)
 		    {
 		       uprintf(user, "<Hub-Security> Password changed|");
@@ -468,7 +469,7 @@ void chat(char *buf, struct user_t *user)
 	       }
 	     else
 	       logprintf(1, "Error - Failed to change password for user %s\n", user->nick);
-	     
+
 	     return;
 	  }
      }
@@ -2106,7 +2107,7 @@ void quit_program(void)
 }
 
 /* Constant-time string comparison to prevent timing attacks */
-static int secure_strcmp(const char *a, const char *b)
+int secure_strcmp(const char *a, const char *b)
 {
    size_t alen = strlen(a);
    size_t blen = strlen(b);
@@ -2125,7 +2126,7 @@ int check_admin_pass(char *buf, struct user_t *user)
    char command[21];
    char pass[MAX_ADMIN_PASS_LEN+1];
 
-   sscanf(buf, "%20s %50[^|]|", command, pass);
+   sscanf(buf, "%20s %120[^|]|", command, pass);
 
    if(secure_strcmp(pass, admin_pass) == 0)
      {
@@ -2514,6 +2515,30 @@ void set_var(char *org_buf, struct user_t *user)
 	   int slen = cut_string(buf, '|');
 	   if(slen < 0) slen = 0;
 	   if(slen > MAX_HOST_LEN) slen = MAX_HOST_LEN;
+
+	   /* Validate path: reject directory traversal and absolute paths */
+	   {
+	      char tmppath[MAX_HOST_LEN+1];
+	      strncpy(tmppath, buf, slen);
+	      tmppath[slen] = '\0';
+	      if(strstr(tmppath, "..") != NULL)
+		{
+		   if(user->type == ADMIN)
+		     uprintf(user, "\r\nError: log_file path must not contain '..'\r\n");
+		   else if(user->type == OP_ADMIN)
+		     uprintf(user, "<Hub-Security> Error: log_file path must not contain '..'|");
+		   return;
+		}
+	      if(tmppath[0] == '/')
+		{
+		   if(user->type == ADMIN)
+		     uprintf(user, "\r\nError: log_file must be a relative path\r\n");
+		   else if(user->type == OP_ADMIN)
+		     uprintf(user, "<Hub-Security> Error: log_file must be a relative path|");
+		   return;
+		}
+	   }
+
 	   strncpy(log_file_path, buf, slen);
 	   log_file_path[slen] = '\0';
 	}

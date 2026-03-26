@@ -88,7 +88,7 @@ struct user_t **human_hash_table = NULL;
 struct sock_t *human_sock_list = NULL;
 unsigned int listening_port = 0;
 unsigned int admin_port = 0;
-BYTE   admin_localhost = 0;
+BYTE   admin_localhost = 1;
 int    admin_listening_socket = 0;
 int    listening_socket = 0;
 int    listening_unx_socket = 0;
@@ -166,7 +166,7 @@ int set_default_vars(void)
    reverse_dns = 0;
    redirect_host[0] = '\0';
    admin_port = 0xD1C0;  /* Easy to remember :) */
-   admin_localhost = 0;
+   admin_localhost = 1;
    searchcheck_exclude_internal = 1;
    searchcheck_exclude_all = 0;
    kick_bantime = 5;
