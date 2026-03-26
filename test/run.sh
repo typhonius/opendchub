@@ -37,6 +37,25 @@ else
     fail "SSL/TLS support NOT compiled in"
 fi
 
+# Test 2c: Version string matches expected
+if grep -q 'VERSION "0.12.0"' /build/opendchub/config.h; then
+    pass "Version string is 0.12.0"
+else
+    fail "Version string mismatch (expected 0.12.0)"
+fi
+
+# Test 2d: TLS config persistence in write_config_file
+if grep -q "tls_port" /build/opendchub/src/fileio.c && grep -q "tls_cert_file" /build/opendchub/src/fileio.c; then
+    # Check that fprintf for tls settings exists (write path, not just read path)
+    if grep -q 'fprintf.*tls_port' /build/opendchub/src/fileio.c; then
+        pass "TLS config written in write_config_file()"
+    else
+        fail "TLS config NOT written in write_config_file()"
+    fi
+else
+    fail "TLS config variables missing from fileio.c"
+fi
+
 echo ""
 echo "========================================"
 echo "=== Source Code Fix Verification     ==="
