@@ -14,6 +14,14 @@ AC_CHECK_LIB(nsl, gethostbyname)
 AC_CHECK_LIB(crypt, crypt)
 AC_CHECK_LIB(crypto, crypt)
 
+dnl Check for bcrypt support via crypt_gensalt (libcrypt/libxcrypt)
+AC_CHECK_LIB(crypt, crypt_gensalt, [
+   AC_DEFINE([HAVE_CRYPT_GENSALT], [], [Has crypt_gensalt for bcrypt support])
+   echo "Bcrypt password hashing support is enabled."
+], [
+   echo "Bcrypt not available (no crypt_gensalt). Using MD5 crypt fallback."
+])
+
 dnl Checks for header files.
 AC_HEADER_STDC
 AC_CHECK_HEADERS(crypt.h fcntl.h malloc.h sys/poll.h sys/select.h sys/time.h)

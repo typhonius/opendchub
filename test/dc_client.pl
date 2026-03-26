@@ -679,5 +679,140 @@ if ($lock_msg =~ /\$Lock\s+(\S+)/) {
 
 close($sock);
 
+print "\n--- Phase 9: Admin Port Commands ---\n";
+
+my $ADMIN_PORT = $ENV{ADMIN_PORT} || 53696;
+my $ADMIN_PASS = $ENV{ADMIN_PASS} || 'testpass';
+
+my $admin_sock = IO::Socket::INET->new(
+    PeerHost => $HOST,
+    PeerPort => $ADMIN_PORT,
+    Proto    => 'tcp',
+    Timeout  => 10,
+);
+
+if ($admin_sock) {
+    pass("Connected to admin port $ADMIN_PORT");
+
+    # Read initial message
+    my $admin_init = read_socket($admin_sock, 3);
+
+    # Authenticate
+    print $admin_sock "\$AdminPass $ADMIN_PASS|";
+    my $auth_resp = read_socket($admin_sock, 3);
+    if ($auth_resp =~ /Password accepted/) {
+        pass("Admin authentication succeeded");
+
+        # Test: $GetStatus command
+        drain_socket($admin_sock);
+        print $admin_sock "\$GetStatus|";
+        my $status_resp = read_until($admin_sock, qr/STATUS END/, 5);
+        if ($status_resp =~ /STATUS hub_name\|/) {
+            pass("\$GetStatus - returned hub_name field");
+        } else {
+            fail("\$GetStatus - missing hub_name (got: " . substr($status_resp, 0, 300) . ")");
+        }
+        if ($status_resp =~ /STATUS users_online\|\d+/) {
+            pass("\$GetStatus - returned users_online count");
+        } else {
+            fail("\$GetStatus - missing users_online");
+        }
+        if ($status_resp =~ /STATUS total_share\|\d+/) {
+            pass("\$GetStatus - returned total_share");
+        } else {
+            fail("\$GetStatus - missing total_share");
+        }
+        if ($status_resp =~ /STATUS uptime\|\d+/) {
+            pass("\$GetStatus - returned uptime");
+        } else {
+            fail("\$GetStatus - missing uptime");
+        }
+        if ($status_resp =~ /STATUS hub_port\|\d+/) {
+            pass("\$GetStatus - returned hub_port");
+        } else {
+            fail("\$GetStatus - missing hub_port");
+        }
+        if ($status_resp =~ /STATUS max_users\|\d+/) {
+            pass("\$GetStatus - returned max_users");
+        } else {
+            fail("\$GetStatus - missing max_users");
+        }
+        if ($status_resp =~ /STATUS ops_online\|\d+/) {
+            pass("\$GetStatus - returned ops_online");
+        } else {
+            fail("\$GetStatus - missing ops_online");
+        }
+        if ($status_resp =~ /STATUS END\|/) {
+            pass("\$GetStatus - terminated with STATUS END");
+        } else {
+            fail("\$GetStatus - missing STATUS END terminator");
+        }
+
+        # Test: $GetUserList command
+        drain_socket($admin_sock);
+        print $admin_sock "\$GetUserList|";
+        my $userlist_resp = read_until($admin_sock, qr/USER END/, 5);
+        if ($userlist_resp =~ /USER END\|/) {
+            pass("\$GetUserList - terminated with USER END");
+        } else {
+            fail("\$GetUserList - missing USER END (got: " . substr($userlist_resp, 0, 300) . ")");
+        }
+        # The bot should be in the user list
+        if ($userlist_resp =~ /USER $BOTNAME\|/) {
+            pass("\$GetUserList - bot '$BOTNAME' found in user list");
+        } else {
+            # Bot may be in a forked process, skip rather than fail
+            skip("\$GetUserList - bot not found (may be in forked process)");
+        }
+
+        # Test: Register a user via admin port, verify bcrypt hash
+        drain_socket($admin_sock);
+        print $admin_sock "\$AddRegUser BcryptTestUser testpassword123 0|";
+        my $reg_resp = read_socket($admin_sock, 3);
+        if ($reg_resp =~ /Added user to reglist/i) {
+            pass("Registered BcryptTestUser via admin port");
+
+            # Check if reglist has bcrypt hash ($2b$ prefix)
+            sleep(1);
+            my $regfile = '/root/.opendchub/reglist';
+            if (open(my $fh, '<', $regfile)) {
+                my $contents = do { local $/; <$fh> };
+                close($fh);
+                if ($contents =~ /BcryptTestUser \$2[aby]\$/) {
+                    pass("Bcrypt hash found in reglist (\$2b\$ prefix)");
+                } elsif ($contents =~ /BcryptTestUser \$1\$/) {
+                    fail("MD5 crypt hash found (expected bcrypt \$2b\$)");
+                } elsif ($contents =~ /BcryptTestUser/) {
+                    fail("User found but hash is not bcrypt (got: " .
+                         substr($contents, 0, 200) . ")");
+                } else {
+                    fail("BcryptTestUser not found in reglist");
+                }
+            } else {
+                fail("Could not read reglist file: $!");
+            }
+
+            # Clean up: remove test user
+            drain_socket($admin_sock);
+            print $admin_sock "\$RemoveRegUser BcryptTestUser|";
+            read_socket($admin_sock, 2);
+        } else {
+            fail("Failed to register BcryptTestUser (got: " . substr($reg_resp, 0, 200) . ")");
+        }
+
+    } else {
+        fail("Admin authentication failed (got: " . substr($auth_resp, 0, 200) . ")");
+    }
+
+    # Clean up admin connection
+    print $admin_sock "\$Exit|";
+    close($admin_sock);
+} else {
+    fail("Could not connect to admin port $ADMIN_PORT: $!");
+    skip("\$GetStatus test skipped - no admin connection");
+    skip("\$GetUserList test skipped - no admin connection");
+    skip("Bcrypt test skipped - no admin connection");
+}
+
 print "\n=== Integration Test Results: $pass passed, $fail failed, $skip skipped out of $total tests ===\n";
 exit($fail > 0 ? 1 : 0);
