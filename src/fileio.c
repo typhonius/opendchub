@@ -2083,7 +2083,15 @@ int write_config_file(void)
    fprintf(fp, "max_desc_len = %d\n\n", max_desc_len);
    
    fprintf(fp, "crypt_enable = %d\n\n", crypt_enable);
-   
+
+#ifdef HAVE_SSL
+   fprintf(fp, "tls_port = %u\n\n", tls_port);
+
+   fprintf(fp, "tls_cert_file = \"%s\"\n\n", tls_cert_file);
+
+   fprintf(fp, "tls_key_file = \"%s\"\n\n", tls_key_file);
+#endif
+
    set_lock(fd, F_UNLCK);
    
    while(((erret = fclose(fp)) != 0) && (errno == EINTR))
