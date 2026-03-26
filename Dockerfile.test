@@ -56,8 +56,7 @@ COPY odchbot/ /build/odchbot/
 RUN mkdir -p /build/odchbot/logs
 
 # Copy test scripts
-COPY test_gag.sh /build/test_gag.sh
-COPY test_integration.pl /build/test_integration.pl
-RUN chmod +x /build/test_gag.sh /build/test_integration.pl
+COPY test/ /build/test/
+RUN chmod +x /build/test/run.sh /build/test/dc_client.pl
 
-CMD ["/build/test_gag.sh"]
+CMD ["/build/test/run.sh"]
