@@ -1915,6 +1915,7 @@ int new_human_user(int sock)
    /* If this is a TLS connection, set up SSL */
    if(sock == tls_listening_socket && ssl_ctx != NULL)
      {
+	int hs_ret;
 	user->ssl = SSL_new(ssl_ctx);
 	if(user->ssl == NULL)
 	  {
@@ -1925,7 +1926,7 @@ int new_human_user(int sock)
 	  }
 	SSL_set_fd(user->ssl, user->sock);
 	user->ssl_handshake_start = time(NULL);
-	int hs_ret = ssl_do_handshake(user);
+	hs_ret = ssl_do_handshake(user);
 	if(hs_ret == -1)
 	  {
 	     /* Handshake failed immediately - plain client on TLS port */
@@ -3092,8 +3093,10 @@ int main(int argc, char *argv[])
    /* Initialize SSL/TLS if configured */
    if(tls_port != 0 && tls_cert_file[0] != '\0' && tls_key_file[0] != '\0')
      {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
 	SSL_library_init();
 	SSL_load_error_strings();
+#endif
 	if(init_ssl_ctx() == 0)
 	  {
 	     /* Test if we can open the TLS listening socket */

@@ -563,7 +563,11 @@ int read_config(void)
 	       {
 		  while(!isdigit((int)line[i]))
 		    i++;
-		  tls_port = (unsigned int)(atoi(line + i));
+		  {
+		     int val = atoi(line + i);
+		     if(val > 0 && val <= 65535)
+		       tls_port = (unsigned int)val;
+		  }
 	       }
 	     /* TLS certificate file */
 	     else if(strncmp(line + i, "tls_cert_file", 13) == 0)

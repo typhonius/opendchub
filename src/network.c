@@ -1342,7 +1342,10 @@ int init_ssl_ctx(void)
 
    /* Disable TLS renegotiation and compression */
    SSL_CTX_set_options(ssl_ctx,
-      SSL_OP_NO_RENEGOTIATION | SSL_OP_NO_COMPRESSION | SSL_OP_CIPHER_SERVER_PREFERENCE);
+#ifdef SSL_OP_NO_RENEGOTIATION
+      SSL_OP_NO_RENEGOTIATION |
+#endif
+      SSL_OP_NO_COMPRESSION | SSL_OP_CIPHER_SERVER_PREFERENCE);
 
    /* Disable session cache (each connection gets a fresh session) */
    SSL_CTX_set_session_cache_mode(ssl_ctx, SSL_SESS_CACHE_OFF);
