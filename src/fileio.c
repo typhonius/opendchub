@@ -1743,7 +1743,7 @@ int check_pass(char *buf, struct user_t *user)
 		  else
 		    tmp = this_passwd;
 
-		  if(tmp != NULL && strcmp(tmp,reg_passwd) == 0)
+		  if(tmp != NULL && secure_strcmp(tmp,reg_passwd) == 0)
 		    {
 		       /* Users password is correct */
 		       int user_type_code;
@@ -1832,7 +1832,7 @@ int check_pass(char *buf, struct user_t *user)
  
    if(strlen(default_pass) > 0)
      {
-        if(strcmp(this_passwd,default_pass) == 0)
+        if(secure_strcmp(this_passwd,default_pass) == 0)
           {
             /* User is regular but default pass required */
             return 1;

@@ -268,3 +268,4 @@ void   remove_human_from_hash(char *nick);
 struct user_t* get_human_user(char *nick);
 void   remove_human_user(struct user_t *user);
 void   encrypt_pass(char* password);
+int    secure_strcmp(const char *a, const char *b);
