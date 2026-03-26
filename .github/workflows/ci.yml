@@ -16,13 +16,13 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y perl libperl-dev autoconf automake build-essential
+          sudo apt-get install -y perl libperl-dev libssl-dev libcrypt-dev autoconf automake build-essential
 
       - name: Build
         run: |
           automake --add-missing --copy 2>/dev/null || true
           autoreconf -fi 2>/dev/null || autoconf -f
-          ./configure
+          ./configure --enable-ssl
           make
 
       - name: Verify binary
