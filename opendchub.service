@@ -1,0 +1,15 @@
+[Unit]
+Description=OpenDCHub Direct Connect Hub
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/usr/local/bin/opendchub
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+User=opendchub
+Group=opendchub
+
+[Install]
+WantedBy=multi-user.target
