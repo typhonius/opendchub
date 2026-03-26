@@ -209,6 +209,7 @@ extern char   link_pass[MAX_ADMIN_PASS_LEN+1];
 extern char   default_pass[MAX_ADMIN_PASS_LEN+1];
 extern BYTE   upload;
 extern BYTE   quit;
+extern BYTE   do_reload_conf;
 extern BYTE   do_write;
 extern BYTE   do_send_linked_hubs;
 extern BYTE   do_purge_user_list;
