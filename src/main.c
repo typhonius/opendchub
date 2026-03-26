@@ -64,6 +64,7 @@
 #include <sys/shm.h>
 #include <sys/sem.h>
 #include <sys/ipc.h>
+#include <stdarg.h>
 
 #include "main.h"
 #include "network.h"
@@ -129,6 +130,8 @@ char   un_sock_path[MAX_FDP_LEN+1] = {0};
 char   logfile[MAX_FDP_LEN+1] = {0};
 BYTE   syslog_enable = 0;
 BYTE   syslog_switch = 0;
+BYTE   log_format = 0;                    /* 0 = text (default), 1 = json */
+char   log_file_path[MAX_HOST_LEN+1] = {0}; /* Alternative log file path */
 BYTE   searchcheck_exclude_internal = 0;
 BYTE   searchcheck_exclude_all = 0;
 int    kick_bantime = 0;
@@ -842,6 +845,22 @@ void send_user_info(struct user_t *from_user, char *to_user_nick, int all)
 }
 
 /* Sends different hub messages to user */
+/* Send an event notification to all connected admin clients.
+ * Events use the format: $Event TYPE data|
+ * This allows admin connections to monitor hub activity in real-time. */
+void send_admin_event(char *format, ...)
+{
+   char buf[4096];
+   if(format)
+     {
+	va_list args;
+	va_start(args, format);
+	vsnprintf(buf, sizeof(buf), format, args);
+	va_end(args);
+	send_to_humans(buf, ADMIN, NULL);
+     }
+}
+
 void hub_mess(struct user_t *user, int mess_type)
 {
    char *send_string;
@@ -1197,8 +1216,16 @@ int handle_command(char *buf, struct user_t *user)
 			      }
 			 }
 		       send_to_non_humans(temp, FORKED, user);
-		       send_to_humans(temp, REGULAR | REGISTERED | OP 
-				      | OP_ADMIN, user);       
+		       send_to_humans(temp, REGULAR | REGISTERED | OP
+				      | OP_ADMIN, user);
+
+		       /* Emit admin events when JOIN/QUIT forwarded from child.
+			* temp is "$Hello nick|" or "$Quit nick|" - already
+			* pipe-terminated, so use %s without extra pipe. */
+		       if(strncmp(temp, "$Hello ", 7) == 0)
+			 send_admin_event("$Event JOIN %s", temp + 7);
+		       else if(strncmp(temp, "$Quit ", 6) == 0)
+			 send_admin_event("$Event QUIT %s", temp + 6);
 		    }
 	       }
 	     
@@ -2417,6 +2444,8 @@ void remove_user(struct user_t *our_user, int send_quit, int remove_from_list)
 	     send_to_non_humans(quit_string, FORKED, NULL);
 	     send_to_humans(quit_string, REGULAR | REGISTERED | OP | OP_ADMIN,
 			    our_user);
+	     /* Send admin event for user quit */
+	     send_admin_event("$Event QUIT %s|", our_user->nick);
 	  }
 	else if((our_user->type == SCRIPT)
 		&& (strncmp(our_user->nick, "script process", 14) != 0))
@@ -2426,7 +2455,7 @@ void remove_user(struct user_t *our_user, int send_quit, int remove_from_list)
 	     send_to_humans(quit_string, REGULAR | REGISTERED | OP | OP_ADMIN,
 			    our_user);
 	  }
-     }   
+     }
    
    if((remove_from_list != 0)
       && (our_user->type & (REGULAR | REGISTERED | OP | OP_ADMIN | SCRIPT)) 

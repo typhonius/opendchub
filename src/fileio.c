@@ -508,6 +508,24 @@ int read_config(void)
 		    i++;
 		  syslog_enable = atoi(line + i);
 	       }
+	     /* 0 for text log format, 1 for JSON structured logging */
+	     else if(strncmp(line + i, "log_format", 10) == 0)
+	       {
+		  while(!isdigit((int)line[i]))
+		    i++;
+		  log_format = atoi(line + i);
+	       }
+	     /* Alternative log file path */
+	     else if(strncmp(line + i, "log_file", 8) == 0)
+	       {
+		  if(strchr(line + i, '"') != NULL)
+		    {
+		       strncpy(log_file_path, strchr(line + i, '"') + 1, MAX_HOST_LEN);
+		       log_file_path[MAX_HOST_LEN] = '\0';
+		       if(*(log_file_path + strlen(log_file_path) - 1) == '"')
+			 *(log_file_path + strlen(log_file_path) - 1) = '\0';
+		    }
+	       }
 	     /* 1 if search IP check should ignore internal IP addresses */
 	     else if(strncmp(line + i, "searchcheck_exclude_internal", 28) == 0)
 	       {
@@ -2044,7 +2062,14 @@ int write_config_file(void)
    fprintf(fp, "redir_on_min_share = %d\n\n", redir_on_min_share);
    
    fprintf(fp, "syslog_enable = %d\n\n", syslog_enable);
-   
+
+   fprintf(fp, "log_format = %d\n\n", log_format);
+
+   if(strlen(log_file_path) > 0)
+     fprintf(fp, "log_file = \"%s\"\n\n", log_file_path);
+   else
+     fprintf(fp, "log_file = \"\"\n\n");
+
    fprintf(fp, "searchcheck_exclude_internal = %d\n\n", searchcheck_exclude_internal);
    
    fprintf(fp, "searchcheck_exclude_all = %d\n\n", searchcheck_exclude_all);
@@ -2277,6 +2302,69 @@ int init_dirs(void)
 }
 
 /* Print to log file */
+/* Map verbosity level to log level string for JSON output */
+static const char *verb_to_level(int verb)
+{
+   switch(verb)
+     {
+      case 1:  return "error";
+      case 2:  return "warn";
+      case 3:  return "info";
+      case 4:  return "debug";
+      case 5:  return "trace";
+      default: return "info";
+     }
+}
+
+/* Write a JSON-escaped version of src into dst (up to dst_size-1 chars).
+ * Escapes backslash, double-quote, and control characters. */
+static void json_escape(char *dst, const char *src, size_t dst_size)
+{
+   size_t di = 0;
+   size_t si;
+
+   if(dst_size == 0)
+     return;
+
+   for(si = 0; src[si] != '\0' && di < dst_size - 1; si++)
+     {
+	unsigned char c = (unsigned char)src[si];
+	if(c == '"' || c == '\\')
+	  {
+	     if(di + 2 >= dst_size) break;
+	     dst[di++] = '\\';
+	     dst[di++] = c;
+	  }
+	else if(c == '\n')
+	  {
+	     if(di + 2 >= dst_size) break;
+	     dst[di++] = '\\';
+	     dst[di++] = 'n';
+	  }
+	else if(c == '\r')
+	  {
+	     if(di + 2 >= dst_size) break;
+	     dst[di++] = '\\';
+	     dst[di++] = 'r';
+	  }
+	else if(c == '\t')
+	  {
+	     if(di + 2 >= dst_size) break;
+	     dst[di++] = '\\';
+	     dst[di++] = 't';
+	  }
+	else if(c < 0x20)
+	  {
+	     /* Skip other control characters */
+	  }
+	else
+	  {
+	     dst[di++] = c;
+	  }
+     }
+   dst[di] = '\0';
+}
+
 void logprintf(int verb, const char *format, ...)
 {
    static char buf[4096];
@@ -2288,41 +2376,44 @@ void logprintf(int verb, const char *format, ...)
    char *temp;
    time_t current_time;
    int priority;
-   
+
    if(verb > verbosity)
      return;
-   
+
    if ((syslog_enable == 0) && (syslog_switch == 0))
      {
-	if (strlen(logfile) > 1)
+	/* log_file_path takes precedence if set, then logfile, then default */
+	if(strlen(log_file_path) > 1)
+	  strncpy(path, log_file_path, MAX_FDP_LEN);
+	else if (strlen(logfile) > 1)
 	  strncpy(path, logfile, MAX_FDP_LEN);
 	else									/* If no preset logfile. */
 	  snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, LOG_FILE);
      }
-   
+
    if(format)
      {
 	va_list args;
 	va_start(args, format);
 	vsnprintf(buf, 4095, format, args);
 	va_end(args);
-	
+
 	if((syslog_enable == 0) && (syslog_switch == 0))
 	  {
 	     while(((fd = open(path, O_RDWR | O_CREAT, 0600)) < 0) && (errno == EINTR))
 	       {
-	       }	     
-	     
+	       }
+
 	     if(fd < 0)
 	       return;
-	     
+
 	     /* Set the lock */
 	     if(set_lock(fd, F_WRLCK) == 0)
 	       {
 		  close(fd);
 		  return;
 	       }
-	     
+
 	     if((fp = fdopen(fd, "a")) == NULL)
 	       {
 		  set_lock(fd, F_UNLCK);
@@ -2330,14 +2421,29 @@ void logprintf(int verb, const char *format, ...)
 		 return;
 	      }
 	  }
-	
+
 	current_time = time(NULL);
 	localtime = ctime(&current_time);
 	temp = localtime;
 	temp += 4;
 	localtime[strlen(localtime)-6] = 0;
 	if(debug != 0)
-	  printf("%s %s", temp, buf);
+	  {
+	     if(log_format == 1)
+	       {
+		  /* JSON output to stdout in debug mode */
+		  static char escaped[8192];
+		  struct tm *tm_info;
+		  char iso_time[64];
+		  tm_info = gmtime(&current_time);
+		  strftime(iso_time, sizeof(iso_time), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+		  json_escape(escaped, buf, sizeof(escaped));
+		  printf("{\"timestamp\":\"%s\",\"level\":\"%s\",\"message\":\"%s\"}\n",
+			 iso_time, verb_to_level(verb), escaped);
+	       }
+	     else
+	       printf("%s %s", temp, buf);
+	  }
 #ifdef HAVE_SYSLOG_H
 	else if((syslog_enable != 0) || (syslog_switch != 0))
 	  {
@@ -2351,8 +2457,23 @@ void logprintf(int verb, const char *format, ...)
 	  }
 #endif
 	else
-	  fprintf(fp, "%s %s", temp, buf);
-	
+	  {
+	     if(log_format == 1)
+	       {
+		  /* JSON output to log file */
+		  static char escaped[8192];
+		  struct tm *tm_info;
+		  char iso_time[64];
+		  tm_info = gmtime(&current_time);
+		  strftime(iso_time, sizeof(iso_time), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+		  json_escape(escaped, buf, sizeof(escaped));
+		  fprintf(fp, "{\"timestamp\":\"%s\",\"level\":\"%s\",\"message\":\"%s\"}\n",
+			  iso_time, verb_to_level(verb), escaped);
+	       }
+	     else
+	       fprintf(fp, "%s %s", temp, buf);
+	  }
+
 	if((syslog_enable == 0) && (syslog_switch == 0))
 	  {
 	     set_lock(fd, F_UNLCK);

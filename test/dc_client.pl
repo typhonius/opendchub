@@ -814,5 +814,166 @@ if ($admin_sock) {
     skip("Bcrypt test skipped - no admin connection");
 }
 
+print "\n--- Phase 10: Admin Event Stream (\$Event) ---\n";
+
+# Test that admin connections receive $Event MYINFO and $Event SEARCH
+# when users perform actions on the hub.
+{
+    # Step 1: Connect to admin port and authenticate
+    my $ev_admin = IO::Socket::INET->new(
+        PeerHost => $HOST,
+        PeerPort => $ADMIN_PORT,
+        Proto    => 'tcp',
+        Timeout  => 10,
+    );
+
+    if ($ev_admin) {
+        read_socket($ev_admin, 3);  # consume banner
+        print $ev_admin "\$AdminPass $ADMIN_PASS|";
+        my $ev_auth = read_socket($ev_admin, 3);
+
+        if ($ev_auth =~ /Password accepted/) {
+            pass("Event test: admin authenticated");
+
+            # Drain any pending data on admin socket
+            drain_socket($ev_admin);
+
+            # Step 2: Connect a new hub user who will trigger events
+            my $ev_sock = IO::Socket::INET->new(
+                PeerHost => $HOST,
+                PeerPort => $PORT,
+                Proto    => 'tcp',
+                Timeout  => 10,
+            );
+
+            if ($ev_sock) {
+                my $ev_lock_msg = read_socket($ev_sock, 5);
+                if ($ev_lock_msg =~ /\$Lock\s+(\S+)/) {
+                    my $ev_lock = $1;
+                    my $ev_key = lock2key($ev_lock);
+                    my $ev_nick = "EventTestUser";
+
+                    print $ev_sock "\$Supports UserCommand NoGetINFO NoHello UserIP2|";
+                    print $ev_sock "\$Key $ev_key|";
+                    print $ev_sock "\$ValidateNick $ev_nick|";
+
+                    my $ev_response = read_until($ev_sock, qr/\$Hello/, 8);
+
+                    if ($ev_response =~ /\$Hello\s+\Q$ev_nick\E/) {
+                        pass("Event test: user $ev_nick logged in");
+
+                        # Step 3: Send $MyINFO to complete login and trigger events
+                        my $ev_myinfo = "\$MyINFO \$ALL $ev_nick Event Tester<TestClient V:1.0,M:A,H:1/0/0,S:5>\$\$\$LAN(T1)\x01\$evt\@test.com\$1073741824\$|";
+                        print $ev_sock $ev_myinfo;
+
+                        # Give the hub a moment to process and emit events
+                        sleep(1);
+                        read_socket($ev_sock, 2);  # consume hub welcome on user sock
+
+                        # Step 4: Read admin socket for events
+                        my $ev_data = read_socket($ev_admin, 3);
+
+                        # Check for $Event JOIN
+                        if ($ev_data =~ /\$Event JOIN \Q$ev_nick\E/) {
+                            pass("\$Event JOIN received for $ev_nick");
+                        } else {
+                            fail("\$Event JOIN not received (got: " . substr($ev_data, 0, 300) . ")");
+                        }
+
+                        # Check for $Event MYINFO
+                        if ($ev_data =~ /\$Event MYINFO \Q$ev_nick\E/) {
+                            pass("\$Event MYINFO received for $ev_nick");
+                        } else {
+                            fail("\$Event MYINFO not received (got: " . substr($ev_data, 0, 300) . ")");
+                        }
+
+                        # Step 5: Send a $MyINFO update (not new user) and verify event
+                        drain_socket($ev_admin);
+                        my $ev_myinfo2 = "\$MyINFO \$ALL $ev_nick Updated Desc<TestClient V:1.0,M:A,H:1/0/0,S:5>\$\$\$LAN(T1)\x01\$evt2\@test.com\$2147483648\$|";
+                        print $ev_sock $ev_myinfo2;
+                        sleep(1);
+                        drain_socket($ev_sock);
+
+                        my $ev_data2 = read_socket($ev_admin, 3);
+                        if ($ev_data2 =~ /\$Event MYINFO \Q$ev_nick\E/) {
+                            pass("\$Event MYINFO received for MyINFO update");
+                        } else {
+                            fail("\$Event MYINFO not received on update (got: " . substr($ev_data2, 0, 300) . ")");
+                        }
+                        # Verify no duplicate JOIN on update
+                        if ($ev_data2 =~ /\$Event JOIN/) {
+                            fail("\$Event JOIN should NOT fire on MyINFO update");
+                        } else {
+                            pass("No \$Event JOIN on MyINFO update (correct)");
+                        }
+
+                        # Step 6: Test $Event SEARCH
+                        drain_socket($ev_admin);
+                        my $search_cmd = "\$Search 127.0.0.1:1234 F?T?0?1?test_search_pattern|";
+                        print $ev_sock $search_cmd;
+                        sleep(1);
+                        drain_socket($ev_sock);
+
+                        my $ev_data3 = read_socket($ev_admin, 3);
+                        if ($ev_data3 =~ /\$Event SEARCH (\Q$ev_nick\E|[\d\.]+:\d+)/) {
+                            pass("\$Event SEARCH received");
+                        } else {
+                            fail("\$Event SEARCH not received (got: " . substr($ev_data3, 0, 300) . ")");
+                        }
+                        if ($ev_data3 =~ /test_search_pattern/) {
+                            pass("\$Event SEARCH contains search pattern");
+                        } else {
+                            fail("\$Event SEARCH missing pattern (got: " . substr($ev_data3, 0, 300) . ")");
+                        }
+
+                        # Step 7: Test $Event CHAT
+                        drain_socket($ev_admin);
+                        print $ev_sock "<$ev_nick> Hello from event test!|";
+                        sleep(1);
+                        drain_socket($ev_sock);
+
+                        my $ev_data4 = read_socket($ev_admin, 3);
+                        if ($ev_data4 =~ /\$Event CHAT.*\Q$ev_nick\E/) {
+                            pass("\$Event CHAT received for $ev_nick");
+                        } else {
+                            fail("\$Event CHAT not received (got: " . substr($ev_data4, 0, 300) . ")");
+                        }
+
+                        # Step 8: Test $Event QUIT by disconnecting the user
+                        drain_socket($ev_admin);
+                        close($ev_sock);
+                        sleep(1);
+
+                        my $ev_data5 = read_socket($ev_admin, 3);
+                        if ($ev_data5 =~ /\$Event QUIT \Q$ev_nick\E/) {
+                            pass("\$Event QUIT received for $ev_nick");
+                        } else {
+                            fail("\$Event QUIT not received (got: " . substr($ev_data5, 0, 300) . ")");
+                        }
+
+                    } else {
+                        fail("Event test: user login failed");
+                        close($ev_sock);
+                    }
+                } else {
+                    fail("Event test: no \$Lock from hub");
+                    close($ev_sock);
+                }
+            } else {
+                fail("Event test: could not connect user to hub");
+            }
+
+            print $ev_admin "\$Exit|";
+            close($ev_admin);
+        } else {
+            fail("Event test: admin auth failed");
+            close($ev_admin);
+        }
+    } else {
+        skip("Event test: could not connect to admin port");
+        skip("Event test: skipping all event tests");
+    }
+}
+
 print "\n=== Integration Test Results: $pass passed, $fail failed, $skip skipped out of $total tests ===\n";
 exit($fail > 0 ? 1 : 0);
