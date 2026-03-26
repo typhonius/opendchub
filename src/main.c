@@ -1858,9 +1858,11 @@ int handle_command(char *buf, struct user_t *user)
 	       }
 	     else if(strncasecmp(temp, "$DataToAll ", 11) == 0)
 	       {
-		  if(user->type == SCRIPT)
+		  if(user->type == ADMIN)
+		    send_to_humans(temp + 11, REGULAR | REGISTERED | OP | OP_ADMIN, user);
+		  else if(user->type == SCRIPT)
 		    {
-		       send_to_non_humans(temp, FORKED, user);		      
+		       send_to_non_humans(temp, FORKED, user);
 		       send_to_humans(temp + 11, REGULAR | REGISTERED | OP | OP_ADMIN, user);
 		    }
 		  else if(user->type == FORKED)
