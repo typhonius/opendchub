@@ -1122,8 +1122,8 @@ int check_if_banned(struct user_t *user, int type)
 		     && (mask > 0) && (mask <= 32))
 		    {
 		       fileip = (byte1<<24) | (byte2<<16) | (byte3<<8) | byte4;
-		       if((((0xFFFF << (32-mask)) & userip) 
-			   == ((0xFFFF << (32-mask)) & fileip))
+		       if((((0xFFFFFFFFU << (32-mask)) & userip) 
+			   == ((0xFFFFFFFFU << (32-mask)) & fileip))
 			  && ((ban_time == 0) || (ban_time > now_time)))
 			 {
 			    set_lock(fd, F_UNLCK);
@@ -1310,8 +1310,8 @@ int check_if_allowed(struct user_t *user)
 		&& (mask > 0) && (mask <= 32))
 	       {
 		  fileip = (byte1<<24) | (byte2<<16) | (byte3<<8) | byte4;
-		  if((((0xFFFF << (32-mask)) & userip) 
-		      == ((0xFFFF << (32-mask)) & fileip)) 
+		  if((((0xFFFFFFFFU << (32-mask)) & userip) 
+		      == ((0xFFFFFFFFU << (32-mask)) & fileip)) 
 		     && ((allow_time == 0) || (allow_time > now_time)))
 		    {
 		       set_lock(fd, F_UNLCK);

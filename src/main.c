@@ -1187,8 +1187,15 @@ int handle_command(char *buf, struct user_t *user)
 		  if(user->type == FORKED)
 		    {
 		       if(strncmp(temp, "$OpList ", 8) == 0)
-			 /* The oplist ends with two '|' */
-			 strcat(temp, "|");
+			 {
+			    /* The oplist ends with two '|' */
+			    size_t tlen = strlen(temp);
+			    if(tlen < MAX_MESS_SIZE)
+			      {
+				 temp[tlen] = '|';
+				 temp[tlen+1] = '\0';
+			      }
+			 }
 		       send_to_non_humans(temp, FORKED, user);
 		       send_to_humans(temp, REGULAR | REGISTERED | OP 
 				      | OP_ADMIN, user);       
@@ -2770,19 +2777,37 @@ void encrypt_pass(char* password)
 {
   unsigned long seed[2];
   char salt[] = "$1$........";
-  
+  const char *result;
+
   const char *const seedchars = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-  
+
   int i;
 
-  seed[0] = time(NULL);								/* Maybe using /dev/urandom. */
-  seed[1] = getpid() ^ (seed[0] >> 14 & 0x30000);
+  /* Use /dev/urandom for salt generation */
+  {
+     int ufd = open("/dev/urandom", O_RDONLY);
+     if(ufd >= 0 && read(ufd, seed, sizeof(seed)) == sizeof(seed))
+       { close(ufd); }
+     else
+       {
+	  if(ufd >= 0) close(ufd);
+	  seed[0] = time(NULL);
+	  seed[1] = getpid() ^ (seed[0] >> 14 & 0x30000);
+       }
+  }
 
   /* Turn it into printable characters from `seedchars'. */
   for (i = 0; i < 8; i++)
     salt[3+i] = seedchars[(seed[i/5] >> (i%5)*6) & 0x3f];
   if(crypt_enable != 0)
-    strcpy(password, crypt(password, salt));
+    {
+       result = crypt(password, salt);
+       if(result != NULL)
+	 {
+	    strncpy(password, result, MAX_ADMIN_PASS_LEN);
+	    password[MAX_ADMIN_PASS_LEN] = '\0';
+	 }
+    }
 }
 
  

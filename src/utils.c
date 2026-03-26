@@ -42,6 +42,7 @@
 # endif
 #endif
 #include <errno.h>
+#include <stdint.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/sem.h>
@@ -192,9 +193,23 @@ void send_lock(struct user_t *user)
 	create_lock:
 	
 	memset(lock_string, 0, sizeof(lock_string));
-	
-	srand(time(NULL));
-	
+
+	/* Seed from /dev/urandom for unpredictable lock keys */
+	{
+	   int urandom_fd = open("/dev/urandom", O_RDONLY);
+	   unsigned int seed;
+	   if(urandom_fd >= 0 && read(urandom_fd, &seed, sizeof(seed)) == sizeof(seed))
+	     {
+		srand(seed);
+		if(urandom_fd >= 0) close(urandom_fd);
+	     }
+	   else
+	     {
+		if(urandom_fd >= 0) close(urandom_fd);
+		srand(time(NULL) ^ getpid() ^ (unsigned int)(uintptr_t)user);
+	     }
+	}
+
 	/* This will be the seed value used to compare the clients lock key with
 	 * the correct one */
 	user->key = rand();

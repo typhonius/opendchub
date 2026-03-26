@@ -463,66 +463,89 @@ void sub_to_script(char *buf)
 	if(!(((i = cut_string(temp, '\005')) != -1) /* Do we not have a second argument? */
 	     && (*(temp+i+1) == '\005')))
 	  {	     
-	     if((arg1 = malloc(sizeof(char) * (cut_string(temp, '|') + 2))) == NULL)
-	       {
-		  logprintf(1, "Error - In sub_to_script()/malloc(): ");
-		  logerror(1, errno);
-		  quit = 1;
-		  return;
-	       }
-	     memset(arg1, 0, cut_string(temp, '|') + 1);
-	     strncpy(arg1, temp, cut_string(temp, '|'));
+	     {
+		int cs_len = cut_string(temp, '|');
+		if(cs_len <= 0) return;
+		if((arg1 = malloc(sizeof(char) * (cs_len + 2))) == NULL)
+		  {
+		     logprintf(1, "Error - In sub_to_script()/malloc(): ");
+		     logerror(1, errno);
+		     quit = 1;
+		     return;
+		  }
+		memset(arg1, 0, cs_len + 1);
+		strncpy(arg1, temp, cs_len);
+	     }
 	  }
 	else /* We have a second argument. */
 	  {	     	
-	     if((arg1 = malloc(sizeof(char) * (cut_string(temp, '\005') + 2))) == NULL)
-	       {
-		  logprintf(1, "Error - In sub_to_script()/malloc(): ");
-		  logerror(1, errno);
-		  quit = 1;
-		  return;
-	       }
-	     memset(arg1, 0, cut_string(temp, '\005') + 1);
-	     strncpy(arg1, temp, cut_string(temp, '\005'));
+	     {
+		int cs_len = cut_string(temp, '\005');
+		if(cs_len <= 0) return;
+		if((arg1 = malloc(sizeof(char) * (cs_len + 2))) == NULL)
+		  {
+		     logprintf(1, "Error - In sub_to_script()/malloc(): ");
+		     logerror(1, errno);
+		     quit = 1;
+		     return;
+		  }
+		memset(arg1, 0, cs_len + 1);
+		strncpy(arg1, temp, cs_len);
+	     }
 	  
 	     /* Second argument */
 	     temp = temp + cut_string(temp, '\005') + 2;	 
 	     if(!(((i = cut_string(temp, '\005')) != -1) /* Do we not have a third argument? */
 		&& (*(temp+i+1) == '\005')))
 	       {
-		  if((arg2 = malloc(sizeof(char) * (cut_string(temp, '|') + 2))) == NULL)
-		    {
-		       logprintf(1, "Error - In sub_to_script()/malloc(): ");
-		       logerror(1, errno);
-		       quit = 1;
-		       return;
-		    }
-		  memset(arg2, 0, cut_string(temp, '|') + 2);
-		  strncpy(arg2, temp, cut_string(temp, '|'));
+		  {
+		     int cs_len = cut_string(temp, '|');
+		     if(cs_len <= 0) { free(arg1); return; }
+		     if((arg2 = malloc(sizeof(char) * (cs_len + 2))) == NULL)
+		       {
+			  logprintf(1, "Error - In sub_to_script()/malloc(): ");
+			  logerror(1, errno);
+			  quit = 1;
+			  free(arg1);
+			  return;
+		       }
+		     memset(arg2, 0, cs_len + 2);
+		     strncpy(arg2, temp, cs_len);
+		  }
 	       }
 	     else /* We have a third argument */
 	       {
-		  if((arg2 = malloc(sizeof(char) * (cut_string(temp, '\005') + 2))) == NULL)
-		    {
-		       logprintf(1, "Error - In sub_to_script()/malloc(): ");
-		       logerror(1, errno);
-		       quit = 1;
-		       return;
-		    }
-		  memset(arg2, 0, cut_string(temp, '\005') + 2);
-		  strncpy(arg2, temp, cut_string(temp, '\005') + 1);
+		  {
+		     int cs_len = cut_string(temp, '\005');
+		     if(cs_len <= 0) { free(arg1); return; }
+		     if((arg2 = malloc(sizeof(char) * (cs_len + 2))) == NULL)
+		       {
+			  logprintf(1, "Error - In sub_to_script()/malloc(): ");
+			  logerror(1, errno);
+			  quit = 1;
+			  free(arg1);
+			  return;
+		       }
+		     memset(arg2, 0, cs_len + 2);
+		     strncpy(arg2, temp, cs_len);
+		  }
 
 		  /* Third argument */
 		  temp = temp + cut_string(temp, '\005') + 1;	 
-		  if((arg3 = malloc(sizeof(char) * (cut_string(temp, '|') + 2))) == NULL)
-		    {
-		       logprintf(1, "Error - In sub_to_script()/malloc(): ");
-		       logerror(1, errno);
-		       quit = 1;
-		       return;
-		    }
-		  memset(arg3, 0, cut_string(temp, '|') + 2);
-		  strncpy(arg3, temp, cut_string(temp, '|'));
+		  {
+		     int cs_len = cut_string(temp, '|');
+		     if(cs_len <= 0) { free(arg1); free(arg2); return; }
+		     if((arg3 = malloc(sizeof(char) * (cs_len + 2))) == NULL)
+		       {
+			  logprintf(1, "Error - In sub_to_script()/malloc(): ");
+			  logerror(1, errno);
+			  quit = 1;
+			  free(arg1); free(arg2);
+			  return;
+		       }
+		     memset(arg3, 0, cs_len + 2);
+		     strncpy(arg3, temp, cs_len);
+		  }
 	       }
 	  }
      }
@@ -642,6 +665,8 @@ void sub_to_script(char *buf)
      free(arg1);
    if(arg2 != NULL)
      free(arg2);
+   if(arg3 != NULL)
+     free(arg3);
 }
 
 /* Sends data from a script to a user.  */

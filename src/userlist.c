@@ -399,7 +399,7 @@ void increase_user_list(void)
 	if(*oldbufp != '\0')
 	  {
 	     /* Get the users nick and hostname.  */
-	     sscanf(oldbufp, "%s %s", temp_nick, temp_host);
+	     sscanf(oldbufp, "%50s %121s", temp_nick, temp_host);
 
 	     /* Print it in the new shared segment.  */
 	     snprintf(newbufp, USER_LIST_ENT_SIZE, "%s %s", temp_nick, temp_host);
@@ -516,7 +516,7 @@ void purge_user_list(void)
 	if(*oldbufp != '\0')
 	  {
 	     /* Get the users nick and hostname.  */
-	     sscanf(oldbufp, "%s %s", temp_nick, temp_host);
+	     sscanf(oldbufp, "%50s %121s", temp_nick, temp_host);
 
 	     /* Print it in the new shared segment.  */
 	     snprintf(newbufp, USER_LIST_ENT_SIZE, "%s %s", temp_nick, temp_host);

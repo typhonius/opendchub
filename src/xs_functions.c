@@ -412,12 +412,10 @@ XS(xs_get_variable)
      XSRETURN_PV(hub_description);
    else if(!strncmp(var_name, "min_share", 9))
      XSRETURN_NV(min_share);
-   else if(!strncmp(var_name, "admin_pass", 10))
-     XSRETURN_PV(admin_pass);
-   else if(!strncmp(var_name, "default_pass", 12))
-     XSRETURN_PV(default_pass);
-   else if(!strncmp(var_name, "link_pass", 9))
-     XSRETURN_PV(link_pass);
+   else if(!strncmp(var_name, "admin_pass", 10)
+	   || !strncmp(var_name, "default_pass", 12)
+	   || !strncmp(var_name, "link_pass", 9))
+     XSRETURN_PV("(restricted)");
    else if(!strncmp(var_name, "users_per_fork", 14))
      XSRETURN_IV(users_per_fork);
    else if(!strncmp(var_name, "listening_port", 14))
