@@ -248,6 +248,31 @@ void search(char *buf, struct user_t *user)
    /* Now, forward to all users */
    send_to_humans(buf, REGULAR | REGISTERED |  OP | OP_ADMIN, NULL);
    send_to_non_humans(buf, FORKED, user);
+
+   /* Send admin event for search.
+    * For direct users, we have the parsed nick and pattern.
+    * For forked process forwards, parse from buf. */
+   if(user->type != FORKED)
+     send_admin_event("$Event SEARCH %s %s|\r\n", user->nick, pattern);
+   else
+     {
+	/* buf is "$Search ip:port T?F?size?type?pattern|" or "$Search Hub:nick ..."
+	 * Parse to extract search pattern for the event */
+	char ev_ip[MAX_HOST_LEN+1];
+	char ev_port[MAX_NICK_LEN+1];
+	char ev_pattern[256];
+	memset(ev_ip, 0, sizeof(ev_ip));
+	memset(ev_port, 0, sizeof(ev_port));
+	memset(ev_pattern, 0, sizeof(ev_pattern));
+	if(sscanf(buf, "$Search %122[^:]:%50s %*c?%*c?%*[^?]?%*c?%255[^|]",
+		  ev_ip, ev_port, ev_pattern) >= 3)
+	  {
+	     if(strcmp(ev_ip, "Hub") == 0)
+	       send_admin_event("$Event SEARCH %s %s|\r\n", ev_port, ev_pattern);
+	     else
+	       send_admin_event("$Event SEARCH %s:%s %s|\r\n", ev_ip, ev_port, ev_pattern);
+	  }
+     }
 }
 
 /* Search on linked hubs, same format as $Search */
@@ -782,11 +807,15 @@ void chat(char *buf, struct user_t *user)
     else {
 	send_to_non_humans(buf, FORKED, user);
 	send_to_humans(buf, REGULAR | REGISTERED | OP | OP_ADMIN, NULL);
+
+	/* Send admin event for chat.
+	 * buf is "<nick> message|" - already pipe-terminated */
+	send_admin_event("$Event CHAT %s", buf);
 	}
      }
 }
 
-/* Forwards request from one user to another, 
+/* Forwards request from one user to another,
  $RevConnectToMe requesting_user requested_user| i.e, the other way around if you compare it
  with $ConnectToMe */
 void rev_connect_to_me(char *buf, struct user_t *user)
@@ -1042,10 +1071,13 @@ int my_info(char *org_buf, struct user_t *user)
 	
 	/* If user is a process, just forward the command.  */
 	if(user->type == FORKED)
-	  {	     
+	  {
 	     send_to_non_humans(org_buf, FORKED | SCRIPT, user);
-	     send_to_humans(org_buf, REGULAR | REGISTERED | OP | OP_ADMIN, 
+	     send_to_humans(org_buf, REGULAR | REGISTERED | OP | OP_ADMIN,
 			    user);
+	     /* Emit MYINFO event for MyINFO forwarded from child process.
+	      * buf points past "$MyINFO $ALL ", so it starts with "nick ..." */
+	     send_admin_event("$Event MYINFO %s", buf);
 	     return 1;
 	  }
 	if(*user->nick == (char) NULL)
@@ -1411,9 +1443,15 @@ int my_info(char *org_buf, struct user_t *user)
    
    /* And then send the MyINFO string. */
    send_to_non_humans(org_buf, FORKED | SCRIPT, user);
-   
-   send_to_humans(org_buf, REGULAR | REGISTERED | OP | OP_ADMIN, NULL);     
-   
+
+   send_to_humans(org_buf, REGULAR | REGISTERED | OP | OP_ADMIN, NULL);
+
+   /* Send admin events for JOIN (new users) and MYINFO (all updates).
+    * For MYINFO, forward the original MyINFO string after "$MyINFO $ALL ". */
+   if(new_user != 0)
+     send_admin_event("$Event JOIN %s|", user->nick);
+   send_admin_event("$Event MYINFO %s", org_buf + 13);
+
    /* Send to scripts */
 #ifdef HAVE_PERL
    if(new_user)
@@ -2006,9 +2044,11 @@ void kick(char *buf, struct user_t *user, int tempban)
 #ifdef HAVE_PERL
 	command_to_scripts("$Script kicked_user %c%c%s%c%c%s|",
 			   '\005', '\005', nick, '\005', '\005', user->nick);
-#endif	
+#endif
+	/* Send admin event for kick */
+	send_admin_event("$Event KICK %s %s|", nick, user->nick);
      }
-   
+
    else if(user->type == SCRIPT)
      {
 	if(check_if_on_user_list(nick) == NULL)
@@ -2455,6 +2495,32 @@ void set_var(char *org_buf, struct user_t *user)
 	  uprintf(user, "\r\nSyslog enable set to %d\r\n", syslog_enable);
 	else if(user->type == OP_ADMIN)
 	  uprintf(user, "<Hub-Security> Syslog enable set to %d|", syslog_enable);
+     }
+   else if(strncmp(buf, "log_format ", 11) == 0)
+     {
+	buf += 11;
+	log_format = atoi(buf);
+	if(user->type == ADMIN)
+	  uprintf(user, "\r\nLog format set to %d (%s)\r\n", log_format,
+		  log_format == 1 ? "json" : "text");
+	else if(user->type == OP_ADMIN)
+	  uprintf(user, "<Hub-Security> Log format set to %d (%s)|", log_format,
+		  log_format == 1 ? "json" : "text");
+     }
+   else if(strncmp(buf, "log_file ", 9) == 0)
+     {
+	buf += 9;
+	{
+	   int slen = cut_string(buf, '|');
+	   if(slen < 0) slen = 0;
+	   if(slen > MAX_HOST_LEN) slen = MAX_HOST_LEN;
+	   strncpy(log_file_path, buf, slen);
+	   log_file_path[slen] = '\0';
+	}
+	if(user->type == ADMIN)
+	  uprintf(user, "\r\nLog file set to \"%s\"\r\n", log_file_path);
+	else if(user->type == OP_ADMIN)
+	  uprintf(user, "<Hub-Security> Log file set to \"%s\"|", log_file_path);
      }
    else if(strncmp(buf, "searchcheck_exclude_internal ", 29) == 0)
      {

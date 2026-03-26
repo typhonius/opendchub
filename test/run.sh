@@ -97,6 +97,108 @@ fi
 
 echo ""
 echo "========================================"
+echo "=== JSON Structured Logging (A7)     ==="
+echo "========================================"
+
+# Test: log_format global variable exists in main.c
+if grep -q "BYTE.*log_format" /build/opendchub/src/main.c; then
+    pass "log_format global variable defined in main.c"
+else
+    fail "log_format global variable missing from main.c"
+fi
+
+# Test: log_file_path global variable exists in main.c
+if grep -q "char.*log_file_path" /build/opendchub/src/main.c; then
+    pass "log_file_path global variable defined in main.c"
+else
+    fail "log_file_path global variable missing from main.c"
+fi
+
+# Test: extern declarations in main.h
+if grep -q "extern BYTE.*log_format" /build/opendchub/src/main.h; then
+    pass "log_format extern declared in main.h"
+else
+    fail "log_format extern missing from main.h"
+fi
+
+if grep -q "extern char.*log_file_path" /build/opendchub/src/main.h; then
+    pass "log_file_path extern declared in main.h"
+else
+    fail "log_file_path extern missing from main.h"
+fi
+
+# Test: JSON format output logic in logprintf (fileio.c)
+if grep -q 'log_format == 1' /build/opendchub/src/fileio.c; then
+    pass "logprintf has JSON format conditional (log_format == 1)"
+else
+    fail "logprintf missing JSON format conditional"
+fi
+
+# Test: JSON output contains required fields (timestamp, level, message)
+if grep -q 'timestamp' /build/opendchub/src/fileio.c && \
+   grep -q 'level' /build/opendchub/src/fileio.c && \
+   grep -q 'message' /build/opendchub/src/fileio.c; then
+    pass "JSON output includes timestamp, level, and message fields"
+else
+    fail "JSON output missing required fields"
+fi
+
+# Test: Verbosity-to-level mapping exists
+if grep -q '"error"' /build/opendchub/src/fileio.c && \
+   grep -q '"warn"' /build/opendchub/src/fileio.c && \
+   grep -q '"trace"' /build/opendchub/src/fileio.c; then
+    pass "Verbosity-to-level mapping (error/warn/trace) present"
+else
+    fail "Verbosity-to-level mapping incomplete"
+fi
+
+# Test: log_format read from config
+if grep -q 'log_format' /build/opendchub/src/fileio.c | grep -q 'strncmp' 2>/dev/null || \
+   grep -q '"log_format"' /build/opendchub/src/fileio.c || \
+   grep 'strncmp.*log_format' /build/opendchub/src/fileio.c >/dev/null 2>&1; then
+    pass "log_format config option parsed in read_config()"
+else
+    fail "log_format config option not parsed"
+fi
+
+# Test: log_file read from config
+if grep 'strncmp.*log_file' /build/opendchub/src/fileio.c >/dev/null 2>&1; then
+    pass "log_file config option parsed in read_config()"
+else
+    fail "log_file config option not parsed"
+fi
+
+# Test: log_format settable at runtime via set_var
+if grep -q 'log_format' /build/opendchub/src/commands.c; then
+    pass "log_format settable via set_var in commands.c"
+else
+    fail "log_format not settable via set_var"
+fi
+
+# Test: log_file settable at runtime via set_var
+if grep -q 'log_file' /build/opendchub/src/commands.c; then
+    pass "log_file settable via set_var in commands.c"
+else
+    fail "log_file not settable via set_var"
+fi
+
+# Test: log_format written to config file
+if grep -q 'log_format' /build/opendchub/src/fileio.c && \
+   grep 'fprintf.*log_format' /build/opendchub/src/fileio.c >/dev/null 2>&1; then
+    pass "log_format written in write_config_file()"
+else
+    fail "log_format not written in write_config_file()"
+fi
+
+# Test: JSON escape function exists
+if grep -q 'json_escape' /build/opendchub/src/fileio.c; then
+    pass "JSON escape helper function present"
+else
+    fail "JSON escape helper function missing"
+fi
+
+echo ""
+echo "========================================"
 echo "=== Bcrypt Support Verification      ==="
 echo "========================================"
 

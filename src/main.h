@@ -219,6 +219,8 @@ extern char   un_sock_path[MAX_FDP_LEN+1];
 extern char   logfile[MAX_FDP_LEN+1];
 extern BYTE   syslog_enable;
 extern BYTE   syslog_switch;
+extern BYTE   log_format;
+extern char   log_file_path[MAX_HOST_LEN+1];
 extern BYTE   searchcheck_exclude_internal;
 extern BYTE   searchcheck_exclude_all;
 extern int    kick_bantime;
@@ -241,6 +243,7 @@ extern char   tls_key_file[MAX_FDP_LEN+1];
 #endif
 
 /* Functions */
+void   send_admin_event(char *format, ...);
 void   hub_mess(struct user_t *user, int mess_type);
 int    new_human_user(int sock);
 int    socket_action(struct user_t *user);
