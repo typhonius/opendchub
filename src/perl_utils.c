@@ -195,6 +195,7 @@ int perl_init(void)
 #ifdef HAVE_SSL
 	     non_human_user_list->ssl = NULL;
 	     non_human_user_list->ssl_handshake_done = 0;
+	     non_human_user_list->ssl_handshake_start = (time_t)0;
 #endif
 	     memset(non_human_user_list->nick, 0, MAX_NICK_LEN+1);
 	     snprintf(non_human_user_list->nick, MAX_NICK_LEN+1, "parent process");
@@ -403,6 +404,7 @@ void sub_to_script(char *buf)
 #ifdef HAVE_SSL
 	     temp_user->ssl = NULL;
 	     temp_user->ssl_handshake_done = 0;
+	     temp_user->ssl_handshake_start = (time_t)0;
 #endif
 	  }
 	else

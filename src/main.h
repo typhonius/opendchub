@@ -31,7 +31,8 @@
  * frequently.  */
 #define BYTE char
 
-#define ALARM_TIME         900             /* Seconds between alarm calls */ 
+#define ALARM_TIME         900             /* Seconds between alarm calls */
+#define SSL_HANDSHAKE_TIMEOUT 30            /* Max seconds for TLS handshake */ 
 #define MAX_NICK_LEN       50              /* Maximum length of nickname, 20 is max in win client */
 #define MAX_HOST_LEN       121             /* Maximum length of hostname */
 #define MAX_VERSION_LEN    30              /* Maximum length of version name */
@@ -145,6 +146,7 @@ struct user_t
 #ifdef HAVE_SSL
    SSL    *ssl;                       /* SSL connection object, NULL if plain */
    BYTE   ssl_handshake_done;         /* 1 if TLS handshake is complete */
+   time_t ssl_handshake_start;        /* Time handshake began, for timeout */
 #endif
 };
 

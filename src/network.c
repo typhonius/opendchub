@@ -316,18 +316,29 @@ void get_socket_action(void)
 				 if(human_user->user->ssl != NULL
 				    && human_user->user->ssl_handshake_done == 0)
 				   {
-				      int hs_ret = ssl_do_handshake(human_user->user);
-				      if(hs_ret == 1)
+				      /* Check handshake timeout */
+				      if(human_user->user->ssl_handshake_start != 0
+					 && (time(NULL) - human_user->user->ssl_handshake_start) > SSL_HANDSHAKE_TIMEOUT)
 					{
-					   /* Handshake complete, send Lock */
-					   send_lock(human_user->user);
-					   hub_mess(human_user->user, INIT_MESS);
-					}
-				      else if(hs_ret == -1)
-					{
+					   logprintf(2, "TLS handshake timeout for %s\n", human_user->user->hostname);
 					   human_user->user->rem = REMOVE_USER;
+					   matched = 1;
 					}
-				      matched = 1;
+				      else
+					{
+					   int hs_ret = ssl_do_handshake(human_user->user);
+					   if(hs_ret == 1)
+					     {
+						/* Handshake complete, send Lock */
+						send_lock(human_user->user);
+						hub_mess(human_user->user, INIT_MESS);
+					     }
+					   else if(hs_ret == -1)
+					     {
+						human_user->user->rem = REMOVE_USER;
+					     }
+					   matched = 1;
+					}
 				   }
 				 else
 #endif
@@ -457,15 +468,25 @@ void get_socket_action(void)
 		  if(human_user->user->ssl != NULL
 		     && human_user->user->ssl_handshake_done == 0)
 		    {
-		       int hs_ret = ssl_do_handshake(human_user->user);
-		       if(hs_ret == 1)
+		       /* Check handshake timeout */
+		       if(human_user->user->ssl_handshake_start != 0
+			  && (time(NULL) - human_user->user->ssl_handshake_start) > SSL_HANDSHAKE_TIMEOUT)
 			 {
-			    send_lock(human_user->user);
-			    hub_mess(human_user->user, INIT_MESS);
-			 }
-		       else if(hs_ret == -1)
-			 {
+			    logprintf(2, "TLS handshake timeout for %s\n", human_user->user->hostname);
 			    human_user->user->rem = REMOVE_USER;
+			 }
+		       else
+			 {
+			    int hs_ret = ssl_do_handshake(human_user->user);
+			    if(hs_ret == 1)
+			      {
+				 send_lock(human_user->user);
+				 hub_mess(human_user->user, INIT_MESS);
+			      }
+			    else if(hs_ret == -1)
+			      {
+				 human_user->user->rem = REMOVE_USER;
+			      }
 			 }
 		       human_user = next_human_user;
 		       continue;
@@ -1289,6 +1310,18 @@ void send_to_user(char *buf, struct user_t *user)
 }
 
 #ifdef HAVE_SSL
+/* Log all queued OpenSSL errors */
+static void log_ssl_errors(const char *context)
+{
+   unsigned long err;
+   char errbuf[256];
+   while((err = ERR_get_error()) != 0)
+     {
+	ERR_error_string_n(err, errbuf, sizeof(errbuf));
+	logprintf(1, "OpenSSL error [%s]: %s\n", context, errbuf);
+     }
+}
+
 /* Initialize the SSL context with certificate and key */
 int init_ssl_ctx(void)
 {
@@ -1296,16 +1329,29 @@ int init_ssl_ctx(void)
    if(ssl_ctx == NULL)
      {
 	logprintf(1, "Error - init_ssl_ctx(): SSL_CTX_new() failed\n");
+	log_ssl_errors("SSL_CTX_new");
 	return -1;
      }
 
    /* Require TLS 1.2 minimum */
    SSL_CTX_set_min_proto_version(ssl_ctx, TLS1_2_VERSION);
 
+   /* Configure strong cipher suites */
+   SSL_CTX_set_cipher_list(ssl_ctx,
+      "ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:DHE+CHACHA20:!aNULL:!MD5:!DSS:!RC4:!3DES");
+
+   /* Disable TLS renegotiation and compression */
+   SSL_CTX_set_options(ssl_ctx,
+      SSL_OP_NO_RENEGOTIATION | SSL_OP_NO_COMPRESSION | SSL_OP_CIPHER_SERVER_PREFERENCE);
+
+   /* Disable session cache (each connection gets a fresh session) */
+   SSL_CTX_set_session_cache_mode(ssl_ctx, SSL_SESS_CACHE_OFF);
+
    /* Load certificate */
    if(SSL_CTX_use_certificate_file(ssl_ctx, tls_cert_file, SSL_FILETYPE_PEM) <= 0)
      {
 	logprintf(1, "Error - init_ssl_ctx(): Failed to load certificate from %s\n", tls_cert_file);
+	log_ssl_errors("load_cert");
 	SSL_CTX_free(ssl_ctx);
 	ssl_ctx = NULL;
 	return -1;
@@ -1315,6 +1361,7 @@ int init_ssl_ctx(void)
    if(SSL_CTX_use_PrivateKey_file(ssl_ctx, tls_key_file, SSL_FILETYPE_PEM) <= 0)
      {
 	logprintf(1, "Error - init_ssl_ctx(): Failed to load private key from %s\n", tls_key_file);
+	log_ssl_errors("load_key");
 	SSL_CTX_free(ssl_ctx);
 	ssl_ctx = NULL;
 	return -1;
@@ -1324,6 +1371,7 @@ int init_ssl_ctx(void)
    if(!SSL_CTX_check_private_key(ssl_ctx))
      {
 	logprintf(1, "Error - init_ssl_ctx(): Certificate and private key do not match\n");
+	log_ssl_errors("check_key");
 	SSL_CTX_free(ssl_ctx);
 	ssl_ctx = NULL;
 	return -1;
@@ -1349,6 +1397,7 @@ int ssl_sendall(SSL *ssl, char *buf, int *len)
    register int bytesleft = *len;
    register int n = 0;
    int ssl_err;
+   int retries = 0;
 
    while(total < *len)
      {
@@ -1357,10 +1406,19 @@ int ssl_sendall(SSL *ssl, char *buf, int *len)
 	  {
 	     ssl_err = SSL_get_error(ssl, n);
 	     if(ssl_err == SSL_ERROR_WANT_WRITE)
-	       continue;
+	       {
+		  if(++retries > 100)
+		    {
+		       *len = total;
+		       return -1;
+		    }
+		  usleep(1000);
+		  continue;
+	       }
 	     *len = total;
 	     return -1;
 	  }
+	retries = 0;
 	total += n;
 	bytesleft -= n;
      }
@@ -1388,6 +1446,7 @@ int ssl_do_handshake(struct user_t *user)
      return 0;
 
    /* Handshake failed */
+   log_ssl_errors("SSL_accept");
    return -1;
 }
 #endif

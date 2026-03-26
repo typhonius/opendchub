@@ -3085,6 +3085,7 @@ void up_cmd(char *buf, int port)
 #ifdef HAVE_SSL
 	     user->ssl = NULL;
 	     user->ssl_handshake_done = 0;
+	     user->ssl_handshake_start = (time_t)0;
 #endif
 
 	     /* Add the user to the non-human user list.  */
