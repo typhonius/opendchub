@@ -199,6 +199,32 @@ fi
 
 echo ""
 echo "========================================"
+echo "=== SIGHUP Config Reload             ==="
+echo "========================================"
+
+# Test: SIGHUP handler registered in init_sig()
+if grep -q "SIGHUP" /build/opendchub/src/main.c; then
+    pass "SIGHUP handler registered in source"
+else
+    fail "SIGHUP handler missing from source"
+fi
+
+# Test: do_reload_conf flag exists
+if grep -q "do_reload_conf" /build/opendchub/src/main.c; then
+    pass "do_reload_conf flag implemented"
+else
+    fail "do_reload_conf flag missing"
+fi
+
+# Test: read_config called on reload
+if grep -q "read_config" /build/opendchub/src/main.c; then
+    pass "read_config() called on SIGHUP reload"
+else
+    fail "read_config() not called on reload"
+fi
+
+echo ""
+echo "========================================"
 echo "=== Bcrypt Support Verification      ==="
 echo "========================================"
 

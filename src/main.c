@@ -120,6 +120,7 @@ char   link_pass[MAX_ADMIN_PASS_LEN+1] = {0};
 char   default_pass[MAX_ADMIN_PASS_LEN+1] = {0};
 BYTE   upload = 0;
 BYTE   quit = 0;
+BYTE   do_reload_conf = 0;
 BYTE   do_write = 0;
 BYTE   do_send_linked_hubs = 0;
 BYTE   do_purge_user_list = 0;
@@ -645,6 +646,11 @@ void term_signal(int z)
    quit = 1;
 }
 
+void sighup_signal(int z)
+{
+   do_reload_conf = 1;
+}
+
 /* This will execute every ALARM_TIME seconds, it checks timeouts and uploads 
  * to public hublist */
 void alarm_signal(int z)
@@ -743,9 +749,14 @@ void init_sig(void)
    sigaction(SIGINT, &sv, NULL);
    
    sv.sa_handler = alarm_signal;
-   
+
    /* And set handler for the alarm call.  */
-   sigaction(SIGALRM, &sv, NULL);   
+   sigaction(SIGALRM, &sv, NULL);
+
+   sv.sa_handler = sighup_signal;
+
+   /* Reload configuration on SIGHUP.  */
+   sigaction(SIGHUP, &sv, NULL);
 }
 
 /* Send info about one user to another. If all is 1, send to all */
@@ -3353,6 +3364,12 @@ int main(int argc, char *argv[])
 	  {
 	     if((upload != 0) && (hublist_upload != 0))
 	       do_upload_to_hublist();
+	     if(do_reload_conf != 0)
+	       {
+		  logprintf(1, "Received SIGHUP, reloading configuration\n");
+		  read_config();
+		  do_reload_conf = 0;
+	       }
 	     if(do_write != 0)
 	       {
 		  write_config_file();
