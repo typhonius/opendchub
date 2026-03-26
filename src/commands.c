@@ -2055,6 +2055,11 @@ void quit_program(void)
 	/* If we are the parent, close the listening sockets and close the temp file */
 	close(listening_socket);
 	close(listening_unx_socket);
+#ifdef HAVE_SSL
+	if(tls_listening_socket != -1)
+	  close(tls_listening_socket);
+	cleanup_ssl_ctx();
+#endif
 	unlink(un_sock_path);
 	exit(EXIT_SUCCESS);
      }
@@ -3077,7 +3082,11 @@ void up_cmd(char *buf, int port)
 	     user->key = port;
 	     user->buf = NULL;
 	     user->outbuf = NULL;
-	     
+#ifdef HAVE_SSL
+	     user->ssl = NULL;
+	     user->ssl_handshake_done = 0;
+#endif
+
 	     /* Add the user to the non-human user list.  */
 	     add_non_human_to_list(user);
 	     

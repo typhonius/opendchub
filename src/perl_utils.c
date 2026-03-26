@@ -192,6 +192,10 @@ int perl_init(void)
 	     non_human_user_list->next = NULL;
 	     non_human_user_list->email = NULL;
 	     non_human_user_list->desc = NULL;
+#ifdef HAVE_SSL
+	     non_human_user_list->ssl = NULL;
+	     non_human_user_list->ssl_handshake_done = 0;
+#endif
 	     memset(non_human_user_list->nick, 0, MAX_NICK_LEN+1);
 	     snprintf(non_human_user_list->nick, MAX_NICK_LEN+1, "parent process");
 	     snprintf(non_human_user_list->hostname, MAX_HOST_LEN+1, "parent_process");
@@ -396,6 +400,10 @@ void sub_to_script(char *buf)
 	     temp_user->desc = NULL;
 	     temp_user->buf = NULL;
 	     temp_user->outbuf = NULL;
+#ifdef HAVE_SSL
+	     temp_user->ssl = NULL;
+	     temp_user->ssl_handshake_done = 0;
+#endif
 	  }
 	else
 	  {

@@ -557,6 +557,37 @@ int read_config(void)
 		    i++;
 		 crypt_enable = atoi(line + i);
 	       }
+#ifdef HAVE_SSL
+	     /* TLS listening port */
+	     else if(strncmp(line + i, "tls_port", 8) == 0)
+	       {
+		  while(!isdigit((int)line[i]))
+		    i++;
+		  tls_port = (unsigned int)(atoi(line + i));
+	       }
+	     /* TLS certificate file */
+	     else if(strncmp(line + i, "tls_cert_file", 13) == 0)
+	       {
+		  if(strchr(line + i, '"') != NULL)
+		    {
+		       strncpy(tls_cert_file, strchr(line + i, '"') + 1, MAX_FDP_LEN);
+		       tls_cert_file[MAX_FDP_LEN] = '\0';
+		       if(*(tls_cert_file + strlen(tls_cert_file) - 1) == '"')
+			 *(tls_cert_file + strlen(tls_cert_file) - 1) = '\0';
+		    }
+	       }
+	     /* TLS private key file */
+	     else if(strncmp(line + i, "tls_key_file", 12) == 0)
+	       {
+		  if(strchr(line + i, '"') != NULL)
+		    {
+		       strncpy(tls_key_file, strchr(line + i, '"') + 1, MAX_FDP_LEN);
+		       tls_key_file[MAX_FDP_LEN] = '\0';
+		       if(*(tls_key_file + strlen(tls_key_file) - 1) == '"')
+			 *(tls_key_file + strlen(tls_key_file) - 1) = '\0';
+		    }
+	       }
+#endif
 	  }
      }
    set_lock(fd, F_UNLCK);
