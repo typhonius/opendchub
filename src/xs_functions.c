@@ -902,6 +902,28 @@ XS(xs_get_user_list)
    XSRETURN_PV(user_list);
 }
    
+/* Returns 1 if the user is connected via TLS, 0 otherwise. */
+XS(xs_is_tls)
+{
+   struct user_t *user;
+   dXSARGS;
+
+   if(items != 1)
+     XSRETURN_IV(0);
+
+   if(!SvPOK(ST(0)))
+     XSRETURN_IV(0);
+
+   if((user = get_human_user(SvPVX(ST(0)))) == NULL)
+     XSRETURN_IV(0);
+
+#ifdef HAVE_SSL
+   XSRETURN_IV(user->ssl != NULL ? 1 : 0);
+#else
+   XSRETURN_IV(0);
+#endif
+}
+
 EXTERN_C void xs_init(void)
 {
    char *file = __FILE__;
@@ -937,6 +959,7 @@ EXTERN_C void xs_init(void)
    newXS("odch::remove_linked_hub", xs_remove_linked_hub, "xs_functions.c");
    newXS("odch::data_to_all", xs_data_to_all, "xs_functions.c");
    newXS("odch::count_users", xs_count_users, "xs_functions.c");
+   newXS("odch::is_tls", xs_is_tls, "xs_functions.c");
    newXS("odch::register_script_name", xs_register_script_name, "xs_functions.c");
    newXS("odch::check_if_registered", xs_check_if_registered, "xs_functions.c");
    newXS("odch::get_user_list", xs_get_user_list, "xs_functions.c");
