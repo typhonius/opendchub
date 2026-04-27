@@ -756,7 +756,6 @@ void upload_to_hublist(int nbrusers)
    if((s = socket(AF_INET, SOCK_STREAM, 0)) < 0)
      {
 	logprintf(1, "Error - In upload_to_hublist(): Could not get a socket\n");
-	close(s);
 	exit(EXIT_FAILURE);
      }
 

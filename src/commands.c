@@ -2365,26 +2365,20 @@ void set_var(char *org_buf, struct user_t *user)
 	  uprintf(user, "<Hub-Security> Listening Port set to %u|", listening_port);
      }   
    else if(!strncmp(buf, "admin_port ", 11))
-     {	
-	buf += 11;
-	{
-	   int val = atoi(buf);
-	   if(val >= 0 && val <= 65535)
-	     admin_port = val;
-	}
+     {
+	/* Admin port cannot be changed at runtime for security reasons */
 	if(user->type == ADMIN)
-	  uprintf(user, "\r\nAdmin port set to %d\r\n", admin_port);
+	  uprintf(user, "\r\nAdmin port cannot be changed at runtime. Edit config and restart.\r\n");
 	else if(user->type == OP_ADMIN)
-	  uprintf(user, "<Hub-Security> Admin port set to %d|", admin_port);
-     }         
+	  uprintf(user, "<Hub-Security> Admin port cannot be changed at runtime|");
+     }
    else if(!strncmp(buf, "admin_localhost ", 16))
      {
-	buf += 16;
-	admin_localhost = atoi(buf);
+	/* Admin localhost restriction cannot be changed at runtime for security */
 	if(user->type == ADMIN)
-	  uprintf(user, "\r\nAdmin localhost set to %d\r\n", admin_localhost);
-        else if(user->type == OP_ADMIN)
-	  uprintf(user, "<Hub-Security> Admin localhost set to %d|", admin_localhost);
+	  uprintf(user, "\r\nAdmin localhost setting cannot be changed at runtime. Edit config and restart.\r\n");
+	else if(user->type == OP_ADMIN)
+	  uprintf(user, "<Hub-Security> Admin localhost setting cannot be changed at runtime|");
      }
    else if(strncmp(buf, "public_hub_host ", 16) == 0)
      {
@@ -3183,13 +3177,9 @@ void up_cmd(char *buf, int port)
 	return;
      }
    
-   if((strncmp(pass, link_pass, strlen(pass)) != 0) || (strlen(pass) != strlen(link_pass)))
+   if(secure_strcmp(pass, link_pass) != 0)
      {
-	logprintf(2, "Linked hub sent bad password:\n");
-	if(strlen(buf) < 3500)
-	  logprintf(2, "%s\n", buf);
-	else
-	  logprintf(2, "too large buf\n");
+	logprintf(2, "Linked hub sent bad password\n");
 	return;
      }
    

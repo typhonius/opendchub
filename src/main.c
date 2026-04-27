@@ -118,14 +118,15 @@ int    user_list_sem = 0;
 char   admin_pass[MAX_ADMIN_PASS_LEN+1] = {0};
 char   link_pass[MAX_ADMIN_PASS_LEN+1] = {0};
 char   default_pass[MAX_ADMIN_PASS_LEN+1] = {0};
-BYTE   upload = 0;
-BYTE   quit = 0;
-BYTE   do_reload_conf = 0;
-BYTE   do_write = 0;
-BYTE   do_send_linked_hubs = 0;
-BYTE   do_purge_user_list = 0;
-BYTE   do_fork = 0;
-BYTE   script_reload = 0;
+volatile sig_atomic_t   upload = 0;
+volatile sig_atomic_t   quit = 0;
+volatile sig_atomic_t   do_reload_conf = 0;
+volatile sig_atomic_t   do_write = 0;
+volatile sig_atomic_t   do_send_linked_hubs = 0;
+volatile sig_atomic_t   do_purge_user_list = 0;
+volatile sig_atomic_t   do_fork = 0;
+volatile sig_atomic_t   script_reload = 0;
+volatile sig_atomic_t   do_alarm = 0;
 char   config_dir[MAX_FDP_LEN+1] = {0};
 char   un_sock_path[MAX_FDP_LEN+1] = {0};
 char   logfile[MAX_FDP_LEN+1] = {0};
@@ -651,22 +652,30 @@ void sighup_signal(int z)
    do_reload_conf = 1;
 }
 
-/* This will execute every ALARM_TIME seconds, it checks timeouts and uploads 
- * to public hublist */
+/* SIGALRM handler — only sets a flag.  All actual work is done in the
+ * main loop via handle_alarm() to avoid calling non-async-signal-safe
+ * functions (malloc, logprintf, list traversal) from a signal context. */
 void alarm_signal(int z)
+{
+   do_alarm = 1;
+   alarm(ALARM_TIME);
+}
+
+/* Called from the main loop when do_alarm flag is set. */
+void handle_alarm(void)
 {
    struct user_t *non_human;
    struct sock_t *human_user;
-   
+
    if((debug != 0) && (pid > 0))
-     logprintf(2, "Got alarm signal\n");
-   
+     logprintf(2, "Alarm timer fired\n");
+
    /* Send the hub_timer sub to the scripts.  */
 #ifdef HAVE_PERL
    if(pid > 0)
      command_to_scripts("$Script hub_timer|");
 #endif
-   
+
    /* Check timeouts */
    non_human = non_human_user_list;
    while(non_human != NULL)
@@ -674,15 +683,15 @@ void alarm_signal(int z)
 	if((non_human->timeout == 0) && (non_human->type == LINKED))
 	  {
 	     logprintf(2, "Linked hub at %s, port %d is offline\n", non_human->hostname, non_human->key);
-	     non_human->rem = REMOVE_USER;	 	     
+	     non_human->rem = REMOVE_USER;
 	  }
 	non_human = non_human->next;
      }
-   
+
    human_user = human_sock_list;
    while(human_user != NULL)
-     {	
-	if((human_user->user->type & 
+     {
+	if((human_user->user->type &
 	    (UNKEYED | NON_LOGGED | NON_LOGGED_ADM)) != 0)
 	  {
 	     logprintf(2, "Timeout for non logged in user at %s, removing user\n", human_user->user->hostname);
@@ -690,7 +699,7 @@ void alarm_signal(int z)
 	  }
 	human_user = human_user->next;
      }
-   
+
    /* And reset all timeout values */
    non_human = non_human_user_list;
    while(non_human != NULL)
@@ -699,7 +708,7 @@ void alarm_signal(int z)
 	  non_human->timeout = 0;
 	non_human = non_human->next;
      }
-   
+
    /* And make clear for upload to public hub list */
    if(pid > 0)
      {
@@ -717,8 +726,6 @@ void alarm_signal(int z)
      }
 
    remove_expired();
-
-   alarm(ALARM_TIME);
 }
 
 void init_sig(void)
@@ -1682,16 +1689,6 @@ int handle_command(char *buf, struct user_t *user)
 				 logprintf(3, "Administrator at %s removed permission from user\n", user->hostname);
 			      }		       
 			 }		  
-		    }		  
-	       }
-	     else if(strncasecmp(temp, "$ShowPerms ", 11) == 0)
-	       {
-		  if(user->type == ADMIN)
-		    {
-		       if((ret = show_perms(user, temp)) == 2)
-			 uprintf(user, "\r\nBad format for $ShowPerms. Correct format is:\r\n$ShowPerms <nick>|");
-		       else if(ret == 3)
-			 uprintf(user, "\r\nUser is not an operator.\r\n");		       
 		    }		  
 	       }
 	     else if(strncasecmp(temp, "$ShowPerms ", 11) == 0)
@@ -3386,7 +3383,12 @@ int main(int argc, char *argv[])
 	       {
 		  purge_user_list();
 		  do_purge_user_list = 0;
-	       }	     
+	       }
+	     if(do_alarm != 0)
+	       {
+		  handle_alarm();
+		  do_alarm = 0;
+	       }
 #ifdef HAVE_PERL
 	     if(script_reload != 0)
 	       {
