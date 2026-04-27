@@ -1518,8 +1518,10 @@ int validate_nick(char *buf, struct user_t *user)
    if(temp_nick[strlen(temp_nick)-1] == '|')
      temp_nick[strlen(temp_nick)-1] = '\0';
    
-   /* Make sure that it doesn't contain ascii char 5.  */
-   if(strchr(temp_nick, '\005') != NULL)
+   /* Reject nicks containing NMDC protocol delimiters or control chars */
+   if(strchr(temp_nick, '\005') != NULL
+      || strchr(temp_nick, '|') != NULL
+      || strchr(temp_nick, '$') != NULL)
      {
 	uprintf(user, "$ValidateDenide %s|", temp_nick);
 	return 0;
@@ -2128,7 +2130,12 @@ int check_admin_pass(char *buf, struct user_t *user)
    char command[21];
    char pass[MAX_ADMIN_PASS_LEN+1];
 
-   sscanf(buf, "%20s %120[^|]|", command, pass);
+   memset(pass, 0, sizeof(pass));
+   if(sscanf(buf, "%20s %120[^|]|", command, pass) != 2)
+     {
+	send_to_user("\r\nBad format for admin password command\r\n", user);
+	return 0;
+     }
 
    if(secure_strcmp(pass, admin_pass) == 0)
      {
@@ -2215,16 +2222,23 @@ void set_var(char *org_buf, struct user_t *user)
    else if(strncmp(buf, "hub_full_mess ", 14) == 0)
      {
 	buf += 14;
-	if((hub_full_mess = realloc(hub_full_mess, sizeof(char) 
-			   * (cut_string(buf, '|') + 1))) == NULL)
-	  {
-	     logprintf(1, "Error - In set_var()/realloc(): ");
-	     logerror(1, errno);
-	     quit = 1;
-	     return;
-	  }
-	strncpy(hub_full_mess, buf, cut_string(buf, '|'));
-	hub_full_mess[cut_string(buf, '|')] = '\0';
+	{
+	   int len = cut_string(buf, '|');
+	   if(len <= 0)
+	     {
+		logprintf(1, "Error - In set_var(): Invalid hub_full_mess (no pipe delimiter)\n");
+		return;
+	     }
+	   if((hub_full_mess = realloc(hub_full_mess, sizeof(char) * (len + 1))) == NULL)
+	     {
+		logprintf(1, "Error - In set_var()/realloc(): ");
+		logerror(1, errno);
+		quit = 1;
+		return;
+	     }
+	   strncpy(hub_full_mess, buf, len);
+	   hub_full_mess[len] = '\0';
+	}
 	if(user->type == ADMIN)
 	  uprintf(user, "\r\nHub Full Mess set to \"%s\"\r\n", hub_full_mess);
 	else if(user->type == OP_ADMIN)
@@ -2233,8 +2247,13 @@ void set_var(char *org_buf, struct user_t *user)
    else if(strncmp(buf, "hub_description ", 16) == 0)
      {
 	buf += 16;
-	strncpy(hub_description, buf, (cut_string(buf, '|') > MAX_HUB_DESC) ? MAX_HUB_DESC : cut_string(buf, '|'));
-	hub_description[cut_string(buf, '|')] = '\0';
+	{
+	   int len = cut_string(buf, '|');
+	   if(len < 0) len = 0;
+	   if(len > MAX_HUB_DESC) len = MAX_HUB_DESC;
+	   strncpy(hub_description, buf, len);
+	   hub_description[len] = '\0';
+	}
 	if(user->type == ADMIN)
 	  uprintf(user, "\r\nHub Description set to \"%s\"\r\n", hub_description);
 	else if(user->type == OP_ADMIN)

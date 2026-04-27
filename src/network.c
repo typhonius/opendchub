@@ -525,6 +525,7 @@ int get_listening_socket(int port, int set_to_localhost)
    if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes,
 		  sizeof(int)) == -1)
      {
+	close(sock);
 	return -1;
      }
    memset(&hub_addr, 0, sizeof(struct sockaddr_in));
@@ -541,6 +542,7 @@ int get_listening_socket(int port, int set_to_localhost)
      {
 	logprintf(1, "Error - In get_listening_socket()/bind(): ");
 	logerror(1, errno);
+	close(sock);
 	return -1;
      }
 
@@ -549,6 +551,7 @@ int get_listening_socket(int port, int set_to_localhost)
      {
 	logprintf(1, "Error - In get_listening_socket()/listen(): ");
 	logerror(1, errno);
+	close(sock);
 	return -1;
      }
 
@@ -556,6 +559,7 @@ int get_listening_socket(int port, int set_to_localhost)
      {
 	logprintf(1, "Error - In get_listening_socket()/fcntl(): ");
 	logerror(1, errno);
+	close(sock);
 	return -1;
      }
 
@@ -564,6 +568,7 @@ int get_listening_socket(int port, int set_to_localhost)
      {
 	logprintf(1, "Error - In get_listening_socket()/fcntl(): ");
 	logerror(1, errno);
+	close(sock);
 	return -1;
      }
 
