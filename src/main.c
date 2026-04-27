@@ -1505,10 +1505,14 @@ int handle_command(char *buf, struct user_t *user)
 		       uprintf(user, "\r\n");
 		       while(hu != NULL)
 			 {
-			    if((hu->user->type & (REGULAR | REGISTERED | OP | OP_ADMIN)) != 0)
+			    if((hu->user->type & (REGULAR | REGISTERED | OP | OP_ADMIN | SCRIPT | ADMIN)) != 0)
 			      {
 				 char *type_str;
-				 if(hu->user->type == OP_ADMIN)
+				 if(hu->user->type == ADMIN)
+				   type_str = "ADMIN";
+				 else if(hu->user->type == SCRIPT)
+				   type_str = "SCRIPT";
+				 else if(hu->user->type == OP_ADMIN)
 				   type_str = "OP_ADMIN";
 				 else if(hu->user->type == OP)
 				   type_str = "OP";
