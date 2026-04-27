@@ -1572,10 +1572,14 @@ int check_if_registered(char *user_nick)
 		       return -1;
 		    }
 		  
+		  /* Return 4 if user is admin */
+		  if(line[j-1] == '3')
+		    return 4;
+
 		  /* Return 3 if user is op admin */
 		  if(line[j-1] == '2')
 		    return 3;
-		  
+
 		  /* Return 2 if user is op */
 		  if(line[j-1] == '1')
 		    return 2;
@@ -1732,6 +1736,7 @@ int check_pass(char *buf, struct user_t *user)
 			   || reg_passwd[rlen-1] == '0'
 			   || reg_passwd[rlen-1] == '1'
 			   || reg_passwd[rlen-1] == '2'
+			   || reg_passwd[rlen-1] == '3'
 			   || reg_passwd[rlen-1] == '\n'
 			   || reg_passwd[rlen-1] == '\r'))
 		       rlen--;
@@ -1762,7 +1767,9 @@ int check_pass(char *buf, struct user_t *user)
 
 		       while(line[j] == ' ')
 			 j++;
-		       if(line[j] == '2')
+		       if(line[j] == '3')
+			 user_type_code = 5;  /* Admin */
+		       else if(line[j] == '2')
 			 user_type_code = 4;  /* OP Admin */
 		       else if(line[j] == '1')
 			 user_type_code = 3;  /* OP */
@@ -2180,7 +2187,7 @@ int add_reg_user(char *buf, struct user_t *user)
    if(sscanf(buf, "%20s %50s %120s %d|", command, nick, pass, &type) != 4)
      return 2;
    
-   if((pass[0] == '\0') || ((type != 0) && (type != 1) && (type != 2)))
+   if((pass[0] == '\0') || ((type != 0) && (type != 1) && (type != 2) && (type != 3)))
      return 2;
 
    if ((user != NULL) && (user->type != ADMIN)

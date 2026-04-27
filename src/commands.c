@@ -1698,6 +1698,8 @@ int my_pass(char *buf, struct user_t *user)
    
    switch(ret)
      {
+      case 5:
+	/* User is Admin — highest privilege level, same as telnet admin */
       case 4:
 	/* User is OP admin, i.e, an OP with priviledges to admin the hub
 	 * from the chat */
@@ -1733,7 +1735,7 @@ int my_pass(char *buf, struct user_t *user)
 	     increase_user_list();
 	     add_user_to_list(user);
 	  }
-	user->type = OP_ADMIN;
+	user->type = (ret == 5) ? ADMIN : OP_ADMIN;
 	user->permissions = 0xFFFF;
 	hub_mess(user, LOGGED_IN_MESS);
 	hub_mess(user, OP_LOGGED_IN_MESS);
