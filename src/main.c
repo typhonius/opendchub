@@ -1531,6 +1531,24 @@ int handle_command(char *buf, struct user_t *user)
 			      }
 			    hu = hu->next;
 			 }
+		       /* Also include non-human users (scripts/bots) */
+		       {
+			  struct user_t *nh = non_human_user_list;
+			  while(nh != NULL)
+			    {
+			       if(nh->type == SCRIPT)
+				 {
+				    uprintf(user, "USER %s|%s|%lld|SCRIPT|%s|%s|%d\r\n",
+					    nh->nick,
+					    nh->hostname ? nh->hostname : "127.0.0.1",
+					    nh->share,
+					    nh->desc ? nh->desc : "",
+					    nh->email ? nh->email : "",
+					    nh->con_type);
+				 }
+			       nh = nh->next;
+			    }
+		       }
 		       uprintf(user, "USER END|\r\n");
 		    }
 	       }
