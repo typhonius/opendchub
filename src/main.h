@@ -19,6 +19,7 @@
 
 
 #include <sys/types.h>
+#include <signal.h>
 
 #ifdef HAVE_SSL
 #include <openssl/ssl.h>
@@ -207,14 +208,15 @@ extern int    user_list_sem;
 extern char   admin_pass[MAX_ADMIN_PASS_LEN+1];
 extern char   link_pass[MAX_ADMIN_PASS_LEN+1];
 extern char   default_pass[MAX_ADMIN_PASS_LEN+1];
-extern BYTE   upload;
-extern BYTE   quit;
-extern BYTE   do_reload_conf;
-extern BYTE   do_write;
-extern BYTE   do_send_linked_hubs;
-extern BYTE   do_purge_user_list;
-extern BYTE   do_fork;
-extern BYTE   script_reload;
+extern volatile sig_atomic_t   upload;
+extern volatile sig_atomic_t   quit;
+extern volatile sig_atomic_t   do_reload_conf;
+extern volatile sig_atomic_t   do_write;
+extern volatile sig_atomic_t   do_send_linked_hubs;
+extern volatile sig_atomic_t   do_purge_user_list;
+extern volatile sig_atomic_t   do_fork;
+extern volatile sig_atomic_t   script_reload;
+extern volatile sig_atomic_t   do_alarm;
 extern char   config_dir[MAX_FDP_LEN+1];
 extern char   un_sock_path[MAX_FDP_LEN+1];
 extern char   logfile[MAX_FDP_LEN+1];
