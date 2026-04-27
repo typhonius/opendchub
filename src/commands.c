@@ -1453,23 +1453,28 @@ int my_info(char *org_buf, struct user_t *user)
      send_admin_event("$Event JOIN %s|", user->nick);
    send_admin_event("$Event MYINFO %s", org_buf + 13);
 
-   /* Send to scripts */
+   /* Send to scripts — pass nick and TLS status as two arguments */
 #ifdef HAVE_PERL
    if(new_user)
-     { 
+     {
+	const char *conn_type = "plain";
+#ifdef HAVE_SSL
+	if(user->ssl != NULL)
+	  conn_type = "tls";
+#endif
 	if(user->type == REGULAR)
-	  command_to_scripts("$Script new_user_connected %c%c%s|", 
-			     '\005', '\005', user->nick);
+	  command_to_scripts("$Script new_user_connected %c%c%s%c%c%s|",
+			     '\005', '\005', user->nick, '\005', '\005', conn_type);
 	else if(user->type == OP_ADMIN)
-	  command_to_scripts("$Script op_admin_connected %c%c%s|", 
-			     '\005', '\005', user->nick);
+	  command_to_scripts("$Script op_admin_connected %c%c%s%c%c%s|",
+			     '\005', '\005', user->nick, '\005', '\005', conn_type);
 	else if(user->type == OP)
-	  command_to_scripts("$Script op_connected %c%c%s|", 
-			     '\005', '\005', user->nick);
+	  command_to_scripts("$Script op_connected %c%c%s%c%c%s|",
+			     '\005', '\005', user->nick, '\005', '\005', conn_type);
 	else if(user->type == REGISTERED)
-	  command_to_scripts("$Script reg_user_connected %c%c%s|", 
-			     '\005', '\005', user->nick);
-     }   
+	  command_to_scripts("$Script reg_user_connected %c%c%s%c%c%s|",
+			     '\005', '\005', user->nick, '\005', '\005', conn_type);
+     }
 #endif
    
    if((new_user != 0) && (user->type == REGULAR))

@@ -617,8 +617,18 @@ void sub_to_script(char *buf)
 	     XPUSHs(sv_2mortal(newSVpvn(arg1, strlen(arg1))));
 	     XPUSHs(sv_2mortal(newSVpvn(arg2, strlen(arg2))));
 	  }
-	
-	/* If it isn't the ones with no arguments or the ones with two, 
+	/* Connected subs take two arguments: nick and connection type (tls/plain) */
+	else if(!strncmp(subname, "new_user_connected", 18)
+		|| !strncmp(subname, "op_admin_connected", 18)
+		|| !strncmp(subname, "op_connected", 12)
+		|| !strncmp(subname, "reg_user_connected", 18))
+	  {
+	     XPUSHs(sv_2mortal(newSVpvn(arg1, strlen(arg1))));
+	     if(arg2 != NULL)
+	       XPUSHs(sv_2mortal(newSVpvn(arg2, strlen(arg2))));
+	  }
+
+	/* If it isn't the ones with no arguments or the ones with two,
 	 * it has one argument.  */
 	else if(strncmp(subname, "started_serving", 15))
 	  if(strncmp(subname, "hub_timer", 9))
