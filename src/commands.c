@@ -397,16 +397,6 @@ void chat(char *buf, struct user_t *user)
    char path[MAX_FDP_LEN+1];
    int ret;
 
-   /* Debug: trace that chat() is being called */
-   {
-      FILE *dbg = fopen("/opt/opendchub/.opendchub/json_debug.log", "a");
-      if (dbg) {
-         fprintf(dbg, "chat() called: user=%s type=%d buf=%.60s\n",
-                 user->nick, user->type, buf);
-         fclose(dbg);
-      }
-   }
-
   chatstring[0] = '\0';
    
    /* Only check nick if the command was sent directly from user */
