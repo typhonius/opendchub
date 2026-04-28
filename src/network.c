@@ -166,11 +166,6 @@ void get_socket_action(void)
    if(pid > 0)
      {
 	total += 2;
-	/* Extra slots for JSON gateway sockets */
-	if(json_listen_sock >= 0)
-	  total++;
-	if(json_client_sock >= 0)
-	  total++;
      }
    else if(pid == 0)
      {
@@ -181,6 +176,11 @@ void get_socket_action(void)
 	if(tls_listening_socket != -1)
 	  total++;
 #endif
+	/* JSON gateway sockets (in child process) */
+	if(json_listen_sock >= 0)
+	  total++;
+	if(json_client_sock >= 0)
+	  total++;
      }
 
    if((ufds = calloc(total, sizeof(struct pollfd))) == NULL)
@@ -198,7 +198,12 @@ void get_socket_action(void)
 	add_fd(&ufds[0], listening_unx_socket);
 	add_fd(&ufds[1], listening_udp_socket);
 	num = 2;
-	/* Add JSON gateway socket (listener and/or connected client) */
+     }
+   else if((pid == 0) && (listening_socket != -1))
+     {
+	add_fd(&ufds[0], listening_socket);
+	num = 1;
+	/* JSON gateway sockets in child process */
 	if(json_listen_sock >= 0)
 	  {
 	     add_fd(&ufds[num], json_listen_sock);
@@ -209,11 +214,6 @@ void get_socket_action(void)
 	     add_fd(&ufds[num], json_client_sock);
 	     num++;
 	  }
-     }
-   else if((pid == 0) && (listening_socket != -1))
-     {
-	add_fd(&ufds[0], listening_socket);
-	num = 1;
 	  {
 	     num++;
 	  }
@@ -286,15 +286,15 @@ void get_socket_action(void)
 		  udp_action();
 		  matched = 1;
 	       }
-	     /* JSON gateway socket: new connection */
-	     else if((pid > 0) && (json_listen_sock >= 0)
+	     /* JSON gateway socket: new connection (in child process) */
+	     else if((pid == 0) && (json_listen_sock >= 0)
 		     && (fds->fd == json_listen_sock))
 	       {
 		  json_socket_accept();
 		  matched = 1;
 	       }
 	     /* JSON gateway socket: data from connected client */
-	     else if((pid > 0) && (json_client_sock >= 0)
+	     else if((pid == 0) && (json_client_sock >= 0)
 		     && (fds->fd == json_client_sock))
 	       {
 		  json_socket_handle_data();

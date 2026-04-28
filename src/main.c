@@ -3149,19 +3149,20 @@ int main(int argc, char *argv[])
 	return 1;
      }
 
-   /* Initialize JSON gateway socket (parent process only) */
-   if(pid > 0 && json_socket_enabled)
+   /* Fork process which holds the listening sockets.  */
+   if(pid > 0)
+     fork_process();
+
+   /* Initialize JSON gateway socket in the child process (pid == 0)
+    * which has the listening sockets and human_sock_list.
+    * This ensures get_status and get_user_list return real data. */
+   if(pid == 0 && json_socket_enabled)
      {
-	/* Default socket path if not configured */
 	if(json_socket_path[0] == '\0')
 	  snprintf(json_socket_path, MAX_JSON_SOCK_PATH, "%s/gateway.sock", config_dir);
 	if(json_socket_init() != 0)
 	  logprintf(1, "Warning - JSON socket initialization failed\n");
      }
-
-   /* Fork process which holds the listening sockets.  */
-   if(pid > 0)
-     fork_process();
    
    while(quit == 0)
      {
