@@ -1519,64 +1519,22 @@ int validate_nick(char *buf, struct user_t *user)
 	return 0;
      }   
    
-   /* Check if it's already taken.  */
-   if((((user_list_nick = check_if_on_user_list(temp_nick)) != NULL)
-       || (get_human_user(temp_nick) != NULL)) 
-      && (check_if_registered(temp_nick) == 0))
+   /* Check if nick is already taken by another online user */
+   if(((check_if_on_user_list(temp_nick)) != NULL)
+       || (get_human_user(temp_nick) != NULL))
      {
 	uprintf(user, "$ValidateDenide %s|", temp_nick);
 	memset(temp_nick, 0, sizeof(temp_nick));
 	return -1;
      }
 
-     {
-	strncpy(user->nick, temp_nick, MAX_NICK_LEN);
-	user->nick[MAX_NICK_LEN] = '\0';
-	if(check_if_registered(temp_nick) != 0)
-	  {
-	     hub_mess(user, GET_PASS_MESS);
-
-	     if(check_if_banned(user, NICKBAN) != 0)
-	       {
-		  uprintf(user, "$To: %s From: Hub $Sorry, you have been banned from this hub.|", temp_nick);
-		  return 0;
-	       }
-
-	     return 1;
-	  }
-
-	else if(strlen(default_pass) > 0)
-          {
-	     hub_mess(user, GET_PASS_MESS2);
-
-	     if(check_if_banned(user, NICKBAN) != 0)
-	       {
-		  uprintf(user, "$To: %s From: Hub $Sorry, you have been banned from this hub.|", temp_nick);
-	          return 0;
-	       }
-
-	     return 1;
-	  }
-
-	else if(registered_only != 0)
-	  {
-	     uprintf(user, "$To: %s From: Hub $Sorry, only registered users are allowed on this hub.|", temp_nick);
-	     return 0;
-	  }
-	
-	if(check_if_banned(user, NICKBAN) != 0)
-	  {
-	     uprintf(user, "$To: %s From: Hub $Sorry, you have been banned from this hub.|", temp_nick);
-	     return 0;
-	  }
-
-	if(strlen(default_pass) == 0)
-	  {
-	     hub_mess(user, HELLO_MESS);
-	     if(welcome_mess(user) == -1)
-	       return 0;
-          }
-     }
+   /* Hub accepts all nicks. Registration, bans, and gags are handled
+    * by the gateway via the JSON socket. Hub just logs them in. */
+   strncpy(user->nick, temp_nick, MAX_NICK_LEN);
+   user->nick[MAX_NICK_LEN] = '\0';
+   hub_mess(user, HELLO_MESS);
+   if(welcome_mess(user) == -1)
+     return 0;
    return 1;
 }
 
