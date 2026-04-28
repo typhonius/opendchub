@@ -510,8 +510,13 @@ void json_send_event(const char *json_str)
 
 void json_event_chat(const char *nick, const char *message)
 {
-   logprintf(4, "json_event_chat called: nick=%s, sock=%d, authed=%d\n",
-             nick ? nick : "(null)", json_client_sock, json_client_authed);
+   /* Debug: write directly to file to bypass logprintf buffering */
+   FILE *dbg = fopen("/opt/opendchub/.opendchub/json_debug.log", "a");
+   if (dbg) {
+      fprintf(dbg, "json_event_chat: nick=%s sock=%d authed=%d\n",
+              nick ? nick : "(null)", json_client_sock, json_client_authed);
+      fclose(dbg);
+   }
    if (json_client_sock < 0 || !json_client_authed)
       return;
 
