@@ -1924,101 +1924,10 @@ int new_human_user(int sock)
 	  }
      }
    
-   /* Check if user is banned */
-     {
-	banret = check_if_banned(user, BAN);
-	allowret = check_if_allowed(user);   
-	
-	if(ban_overrides_allow == 0)
-	  {
-	     if((allowret != 1) && (banret == 1))
-	       {
-		  hub_mess(user, BAN_MESS);
-		  inet_ntop(AF_INET, &client.sin_addr, ip_str, sizeof(ip_str));
-		  logprintf(4, "User %s from %s (%s) denied\n",  user->nick, user->hostname, ip_str);
-#ifdef HAVE_SSL
-		  if(user->ssl != NULL)
-		    {
-		       SSL_shutdown(user->ssl);
-		       SSL_free(user->ssl);
-		       user->ssl = NULL;
-		    }
-#endif
-		  while(((erret =  close(user->sock)) != 0) && (errno == EINTR))
-		    logprintf(1, "Error - In new_human_user()/close(): Interrupted system call. Trying again.\n");
-
-		  if(erret != 0)
-		    {
-		       logprintf(1, "Error - In new_human_user()/close(): ");
-		       logerror(1, errno);
-		    }
-
-		  free(user);
-		  return 1;
-	       }	
-	  }
-	
-	else
-	  {	
-	     if((allowret != 1) || (banret == 1))
-	       {
-		  hub_mess(user, BAN_MESS);
-		  inet_ntop(AF_INET, &client.sin_addr, ip_str, sizeof(ip_str));
-		  logprintf(4, "User %s from %s (%s) denied\n",  user->nick, user->hostname, ip_str);
-#ifdef HAVE_SSL
-		  if(user->ssl != NULL)
-		    {
-		       SSL_shutdown(user->ssl);
-		       SSL_free(user->ssl);
-		       user->ssl = NULL;
-		    }
-#endif
-		  while(((erret =  close(user->sock)) != 0) && (errno == EINTR))
-		    logprintf(1, "Error - In new_human_user()/close(): Interrupted system call. Trying again.\n");
-
-		  if(erret != 0)
-		    {
-		       logprintf(1, "Error - In new_human_user()/close(): ");
-		       logerror(1, errno);
-		    }
-
-		  free(user);
-		  return 1;
-	       }	
-	  }
-	
-	if((banret == -1) || (allowret == -1))
-	  {
-#ifdef HAVE_SSL
-	     if(user->ssl != NULL)
-	       {
-		  SSL_shutdown(user->ssl);
-		  SSL_free(user->ssl);
-		  user->ssl = NULL;
-	       }
-#endif
-	     while(((erret =  close(user->sock)) != 0) && (errno == EINTR))
-	       logprintf(1, "Error - In new_human_user()/close(): Interrupted system call. Trying again.\n");
-
-	     if(erret != 0)
-	       {
-		  logprintf(1, "Error - In new_human_user()/close(): ");
-		  logerror(1, errno);
-	       }
-	     free(user);
-	     return -1;
-	  }   
-     }
-   /* Check if the user is gagged */
-   gagret = check_if_gagged(user);
-   if (gagret == 1)
-   {
-   	user->gag = 1;
-   }
-   else
-   {
-   	user->gag = 0;
-   }
+   /* Ban/allow/gag checks removed — gateway handles all moderation.
+    * Gateway receives user_join event and kicks if banned.
+    * Gateway receives chat event and suppresses if gagged. */
+   user->gag = 0;
            
    /* Add sock struct of the user.  */
    add_socket(user);
@@ -2988,13 +2897,7 @@ int main(int argc, char *argv[])
    else if(ret == 1)
      logprintf(1, "Created motd file\n");
    
-   create_banlist();
-   create_gaglist();
-   create_nickbanlist();
-   create_allowlist();
-   create_reglist();
-   create_linklist();
-   create_op_permlist();
+   /* File-based lists removed — all data managed by gateway via PostgreSQL. */
    if((int)hub_hostname[0] <= 0x20)
      if(set_hub_hostname() == -1)     
        return 1;
