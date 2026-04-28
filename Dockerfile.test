@@ -4,36 +4,13 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     autoconf \
     automake \
-    perl \
-    libperl-dev \
     libcrypt-dev \
     libssl-dev \
     netcat-openbsd \
     openssl \
     procps \
-    cpanminus \
-    libdbi-perl \
-    libdbd-sqlite3-perl \
-    libyaml-appconfig-perl \
-    libyaml-perl \
-    libyaml-syck-perl \
-    libdatetime-perl \
-    libdatetime-format-duration-perl \
-    libsql-abstract-perl \
-    libnumber-bytes-human-perl \
-    libclone-perl \
-    libjson-perl \
-    liblog-log4perl-perl \
-    liburi-perl \
-    libmoo-perl \
-    libwww-perl \
-    libxml-simple-perl \
-    libipc-system-simple-perl \
-    libtest-exception-perl \
-    libio-socket-ssl-perl \
+    perl \
     && rm -rf /var/lib/apt/lists/*
-
-RUN cpanm SQL::Abstract::Limit --notest 2>/dev/null || true
 
 RUN mkdir -p /root/.opendchub
 
@@ -42,7 +19,6 @@ COPY configure.in Makefile.am acconfig.h /build/opendchub/
 COPY AUTHORS ChangeLog COPYING INSTALL NEWS README.md TODO /build/opendchub/
 RUN ln -s README.md /build/opendchub/README
 COPY src/Makefile.am src/*.c src/*.h /build/opendchub/src/
-COPY Samplescripts/ /build/opendchub/Samplescripts/
 
 WORKDIR /build/opendchub
 
@@ -51,12 +27,6 @@ RUN autoreconf -fi 2>&1 || autoconf -f 2>&1
 RUN ./configure --enable-ssl 2>&1 | tail -5
 RUN make clean 2>/dev/null; make
 RUN ls -la src/opendchub
-
-# Copy odchbot (v4 with lib/ structure)
-COPY odchbot/ /build/odchbot/
-
-# Create database directory for odchbot
-RUN mkdir -p /build/odchbot/logs
 
 # Copy test scripts
 COPY test/ /build/test/
