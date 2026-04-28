@@ -630,28 +630,22 @@ void create_op_permlist(void) { /* Removed */ }
 void create_linklist(void) { /* Removed */ }
 
 int check_if_banned(struct user_t *user, int type)
-{ (void)0; return 0; /* Gateway handles this */ }
+{ (void)user; (void)type; return 0; }
 
-/* Returns 1 if user is on the allowlist.  */
 int check_if_allowed(struct user_t *user)
-{ (void)0; return 0; /* Gateway handles this */ }
+{ (void)user; return 0; }
 
-/* Returns 1 if a nick is on the gaglist */
 int check_if_gagged(struct user_t *user)
-{ (void)0; return 0; /* Gateway handles this */ }
+{ (void)user; return 0; }
 
-/* Returns 1 if a nick is on the registered list, 2 if nick is op and 3 if 
- * user is op_admin.  */
 int check_if_registered(char *user_nick)
-{ (void)0; return 0; /* Gateway handles this */ }
+{ (void)user_nick; return 0; }
 
-/* Returns 0 if user is not on the list, 2 if user is registered, 3 if user
- * is OP, 4 if user is Op Admin and -1 if error */
 int check_pass(char *buf, struct user_t *user)
-{ (void)0; return 0; /* Gateway handles this */ }
+{ (void)buf; (void)user; return 0; }
 
 int get_permissions(char *user_nick)
-{ (void)0; return 0; /* Gateway handles this */ }
+{ (void)user_nick; return 0; }
 
 /* Write config file */
 int write_config_file(void)
