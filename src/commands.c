@@ -1088,17 +1088,7 @@ int my_info(char *org_buf, struct user_t *user)
 	if(*user->nick == (char) NULL)
 	  return 0;
 	
-	if((check_if_registered(user->nick) != 0)
-	   && ((user->type & (UNKEYED | NON_LOGGED | REGULAR)) != 0))
-	  {
-	     logprintf(1, "User at %s tried to log in with registered nick without providing password, kicking user\n", user->hostname);
-	     return 0;
-	  } else if((strlen(default_pass) > 0)
-                    && ((user -> type & (UNKEYED | NON_LOGGED)) != 0))
-	    {
-               logprintf(1, "User at %s tried to log in with %s without providing default password, kicking user\n", user->hostname, user->nick);
-	       return 0;
-            }
+	/* Registration checks removed — gateway handles auth */
      }
    else
      {	
@@ -2488,8 +2478,7 @@ int ballow(char *buf, int type, struct user_t *user)
 	if(sscanf(buf, "%50s %lu%c", ban_host, &ban_time, &period) == 1)
 	  ban_host[strlen(ban_host) - 1] = '\0';
 	
-	if(check_if_registered(ban_host) > check_if_registered(user->nick))
-	  return -1;
+	/* Permission check removed — gateway handles moderation permissions */
      }
    else
      {
@@ -3425,10 +3414,8 @@ int show_perms(struct user_t *user, char *buf)
    if(nick[0] == '\0')
      return 2;
 
-   if(check_if_registered(nick) != 2)
-     return 3;
-
-   perms = get_permissions(nick);
+   /* Registration check removed — gateway handles permissions */
+   perms = 0;
 
    if((user->type & (OP | OP_ADMIN)) != 0)
      uprintf(user, "<Hub-Security> Permissions for %s:", nick);
