@@ -58,7 +58,6 @@
 #define LOG_FILE           "log"           /* Name of log file */
 #define UN_SOCK_NAME       "odch"          /* Name of unix socket file */
 #define USER_LIST          "odchlist"      /* Name of temporary user list file */
-#define SCRIPT_DIR         "scripts"       /* Name of script directory.  */
 #define SYSLOG_IDENT       "odch"          /* Identity for system log */
 
 #define INIT_MESS          1
@@ -69,7 +68,6 @@
 #define LOGGED_IN_MESS     6
 #define OP_LOGGED_IN_MESS  7
 #define BAD_PASS_MESS      8
-#define INIT_ADMIN_MESS    9
 #define	GET_PASS_MESS2	  10
 
 /* The different user types */
@@ -82,8 +80,6 @@
 #define ADMIN              0x40
 #define FORKED             0x80
 #define LINKED             0x100
-#define SCRIPT             0x200
-#define NON_LOGGED_ADM     0x400
 
 /* The different OP permissions */
 #define BAN_ALLOW          0x1
@@ -177,9 +173,6 @@ extern struct user_t *non_human_user_list;
 extern struct user_t **human_hash_table;
 extern struct sock_t *human_sock_list;
 extern unsigned int listening_port;
-extern unsigned int admin_port;
-extern BYTE   admin_localhost;
-extern int    admin_listening_socket;
 extern int    listening_socket;
 extern int    listening_unx_socket;
 extern int    listening_udp_socket;
@@ -205,7 +198,6 @@ extern int    total_share_shm;
 extern int    total_share_sem;
 extern int    user_list_shm_shm;
 extern int    user_list_sem;
-extern char   admin_pass[MAX_ADMIN_PASS_LEN+1];
 extern char   link_pass[MAX_ADMIN_PASS_LEN+1];
 extern char   default_pass[MAX_ADMIN_PASS_LEN+1];
 extern volatile sig_atomic_t   upload;
@@ -215,7 +207,6 @@ extern volatile sig_atomic_t   do_write;
 extern volatile sig_atomic_t   do_send_linked_hubs;
 extern volatile sig_atomic_t   do_purge_user_list;
 extern volatile sig_atomic_t   do_fork;
-extern volatile sig_atomic_t   script_reload;
 extern volatile sig_atomic_t   do_alarm;
 extern char   config_dir[MAX_FDP_LEN+1];
 extern char   un_sock_path[MAX_FDP_LEN+1];
@@ -245,8 +236,10 @@ extern char   tls_cert_file[MAX_FDP_LEN+1];
 extern char   tls_key_file[MAX_FDP_LEN+1];
 #endif
 
+/* JSON socket functions (gateway communication) */
+#include "json_socket.h"
+
 /* Functions */
-void   send_admin_event(char *format, ...);
 void   hub_mess(struct user_t *user, int mess_type);
 int    new_human_user(int sock);
 int    socket_action(struct user_t *user);
@@ -263,7 +256,6 @@ void   kill_forked_process(void);
 void   term_signal(int z);
 void   alarm_signal(int z);
 int    set_default_vars(void);
-void   new_admin_connection();
 void   add_non_human_to_list(struct user_t *user);
 void   remove_non_human(struct user_t *our_user);
 void   add_human_to_hash(struct user_t *user);

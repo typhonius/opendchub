@@ -50,3 +50,4 @@ int remove_exp_from_file(time_t now_time, char *file);
 int add_perm(char *buf, struct user_t *user);
 int remove_perm(char *buf, struct user_t *user);
 int check_if_on_linklist(char *ip, int port);
+int check_if_gagged(struct user_t *user);

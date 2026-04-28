@@ -66,10 +66,6 @@
 #include "utils.h"
 #include "fileio.h"
 #include "network.h"
-#ifdef HAVE_PERL
-# include "perl_utils.h"
-#endif
-
 #ifndef HAVE_STRTOLL
 # ifdef HAVE_STRTOQ
 #  define strtoll(X, Y, Z) (long long)strtoq(X, Y, Z)
@@ -251,31 +247,7 @@ int read_config(void)
 		  min_share = strtoll(line + i, (char **)NULL, 10);
 	       }
 	     
-	     /* Password for admin to log in via telnet */
-	     else if(strncmp(line + i, "admin_pass", 10) == 0)
-	       {
-		  if(strchr(line + i, '"') == NULL)
-		    {
-		       set_lock(fd, F_UNLCK);
-		         while(((erret = fclose(fp)) != 0) && (errno == EINTR))
-			 logprintf(1, "Error - In read_config()/fclose(): Interrupted system call. Trying again.\n");
-		       
-		       if(erret != 0)
-			 {
-			    logprintf(1, "Error - In read_config()/fclose(): ");
-			    logerror(1, errno);
-			    return -1;
-			 }
-		       
-		       return -1;
-		    }
-		  strncpy(admin_pass, strchr(line + i, '"') + 1, MAX_ADMIN_PASS_LEN);
-		  admin_pass[MAX_ADMIN_PASS_LEN] = '\0';
-		  if(*(admin_pass + strlen(admin_pass) - 1) == '"')
-		    *(admin_pass + strlen(admin_pass) - 1) = '\0';
-	       }
-
-             /* Password for admin to log in via telnet */
+             /* Default password */
              else if(strncmp(line + i, "default_pass", 12) == 0)
                {
                   if(strchr(line + i, '"') == NULL)
@@ -331,20 +303,29 @@ int read_config(void)
 		  listening_port = (unsigned int)(atoi(line + i));
 	       }
 	     
-	     /* Listening port for admin connections */
-	      else if(strncmp(line + i, "admin_port", 10) == 0)
+	     /* JSON gateway socket path */
+	     else if(strncmp(line + i, "json_socket_path", 16) == 0)
 	       {
-		  while(!isdigit((int)line[i]))
-		    i++;
-		  admin_port = atoi(line + i);
+		  if(strchr(line + i, '"') != NULL)
+		    {
+		       strncpy(json_socket_path, strchr(line + i, '"') + 1, MAX_JSON_SOCK_PATH - 1);
+		       json_socket_path[MAX_JSON_SOCK_PATH - 1] = '\0';
+		       if(*(json_socket_path + strlen(json_socket_path) - 1) == '"')
+			 *(json_socket_path + strlen(json_socket_path) - 1) = '\0';
+		       json_socket_enabled = 1;
+		    }
 	       }
-	     
-	     /* Listening host for admin connections on localhost */
-	     else if (strncmp(line + i, "admin_localhost", 15) == 0)
+
+	     /* JSON gateway socket shared secret */
+	     else if(strncmp(line + i, "json_socket_secret", 18) == 0)
 	       {
-	          while(!isdigit((int)line[i]))
-		    i++;
-		  admin_localhost = atoi(line + i);
+		  if(strchr(line + i, '"') != NULL)
+		    {
+		       strncpy(json_socket_secret, strchr(line + i, '"') + 1, MAX_JSON_SECRET_LEN - 1);
+		       json_socket_secret[MAX_JSON_SECRET_LEN - 1] = '\0';
+		       if(*(json_socket_secret + strlen(json_socket_secret) - 1) == '"')
+			 *(json_socket_secret + strlen(json_socket_secret) - 1) = '\0';
+		    }
 	       }
 
 	     /* Public hub list host */
@@ -2025,7 +2006,6 @@ int write_config_file(void)
    
    fprintf(fp, "min_share = %llu\n\n", min_share);
 	       
-   fprintf(fp, "admin_pass = \"%s\"\n\n", admin_pass);
 
    fprintf(fp, "default_pass = \"%s\"\n\n", default_pass);
 	       	
@@ -2035,10 +2015,13 @@ int write_config_file(void)
    
    fprintf(fp, "listening_port = %u\n\n", listening_port);
    
-   fprintf(fp, "admin_port = %u\n\n", admin_port);
 
-   fprintf(fp, "admin_localhost = %u\n\n", admin_localhost);
    
+   if(json_socket_path[0] != '\0')
+     fprintf(fp, "json_socket_path = \"%s\"\n\n", json_socket_path);
+   if(json_socket_secret[0] != '\0')
+     fprintf(fp, "json_socket_secret = \"%s\"\n\n", json_socket_secret);
+
    fprintf(fp, "hublist_upload = %d\n\n", hublist_upload);
   
    fprintf(fp, "public_hub_host = \"%s\"\n\n", public_hub_host);
@@ -2197,15 +2180,6 @@ int add_reg_user(char *buf, struct user_t *user)
    
    ret = add_line_to_file(line, path);
    
-   /* Send the event to script */
-#ifdef HAVE_PERL
-   if(ret == 1)
-     {	
-	command_to_scripts("$Script added_registered_user %c%c", '\005', '\005');
-	non_format_to_scripts(nick);
-	command_to_scripts("|");
-     }   
-#endif
    return ret;
 }
 
@@ -2239,15 +2213,6 @@ int add_linked_hub(char *buf)
    
    ret = add_line_to_file(line, path);
    
-   /* Send to scripts */
-#ifdef HAVE_PERL
-   if(ret == 1)
-     {	
-	command_to_scripts("$Script added_multi_hub %c%c", '\005', '\005', ip);
-	non_format_to_scripts(ip);
-	command_to_scripts("%c%c%d|", '\005', '\005', port);
-     }   
-#endif
    return ret;
 }
 
@@ -2279,7 +2244,6 @@ int remove_linked_hub(char *buf)
 int init_dirs(void)
 {
    char path[MAX_FDP_LEN+1];
-   char script_dir[MAX_FDP_LEN+1];
 
    if(strlen(working_dir) == 0)
      {
@@ -2302,10 +2266,8 @@ int init_dirs(void)
 
    sprintfa(path, MAX_FDP_LEN + 1, "/tmp");
    snprintf(un_sock_path, MAX_FDP_LEN + 1, "%s/%s", path, UN_SOCK_NAME);
-   snprintf(script_dir, sizeof(script_dir), "%s/%s", config_dir, SCRIPT_DIR);
    mkdir(config_dir, 0700);
    mkdir(path, 0700);
-   mkdir(script_dir, 0700);
    return 1;
 }
 

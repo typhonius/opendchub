@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_INIT(configure.in)
-AM_INIT_AUTOMAKE(opendchub, 0.12.0)
+AM_INIT_AUTOMAKE(opendchub, 1.0.0)
 AM_CONFIG_HEADER(config.h)
 AM_SANITY_CHECK
 AC_DEFINE(_GNU_SOURCE)
@@ -56,7 +56,7 @@ if test "$CHECK" = "yes"; then
       AC_CHECK_HEADERS(pwd.h, [], [FAIL="true"])
       AC_CHECK_HEADERS(grp.h, [], [FAIL="true"])
    ], [FAIL="true"])
- 
+
    if test "$FAIL" = "false"; then
       AC_DEFINE([SWITCH_USER], [], [Switch user if started as root])
       echo "Switch user support is enabled."
@@ -96,47 +96,8 @@ if test ! -d $HOME/.opendchub; then
    chmod 700 $HOME/.opendchub;
 fi
 
-AC_ARG_ENABLE(perl,
-   AC_HELP_STRING([--disable-perl], [disable perl script support]),
-   if test "$enableval" = "no"; then
-      ENABLE_PERL="no"
-   fi,
-   [ENABLE_PERL="yes"]
-)
-
-if test "$ENABLE_PERL" = "yes"; then
-   AC_CHECK_PROG(ENABLE_PERL, perl, yes, no)
-   if test "$ENABLE_PERL" = "no"; then
-      AC_MSG_WARN(Perl wasn't found. Scripting will be disabled.)
-   else
-       AC_SUBST(perl_flags)
-       perl_flags=`perl -MExtUtils::Embed -e ccopts`
-       AC_SUBST(perl_libs)
-       perl_libs=`perl -MExtUtils::Embed -e ldopts`
-       
-       dnl Check if script directory exists.
-       dnl Creates it and copies sample scripts to it if it doesn't.
-       if test ! -d $HOME/.opendchub/scripts; then
-       	  echo "creating script directory: $HOME/.opendchub/scripts"
-       	  mkdir $HOME/.opendchub/scripts
-	  chmod 700 $HOME/.opendchub/scripts;
-	  for i in Samplescripts/*; do
-	      cp $i $HOME/.opendchub/scripts;
-	  done
-       fi       
-   fi
-else
-    echo "Perl script support is disabled."
-fi
-
-if test "$ENABLE_PERL" = "yes"; then
-   AC_DEFINE(HAVE_PERL, [], [Define HAVE_PERL])   
-fi
-
-
 AC_OUTPUT(Makefile src/Makefile)
 
 echo ""
-echo "*** Type \"gmake\" to build opendchub ***"
-echo "*** If \"gmake\" does not work, try \"make\" ***"
+echo "*** Type \"make\" to build opendchub ***"
 echo ""
