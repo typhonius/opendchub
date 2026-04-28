@@ -32,7 +32,6 @@ int    my_pass(char *buf, struct user_t *user);
 void   kick(char *buf, struct user_t *user, int tempban);
 void   forward_to_clients(char *buf, struct user_t *user);
 void   quit_program(void);
-int    check_admin_pass(char *buf, struct user_t *user);
 void   set_var(char *buf, struct user_t *user);
 int    ballow(char *buf, int type, struct user_t *user);
 int    unballow(char *buf, int type);

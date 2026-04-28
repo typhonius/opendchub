@@ -1,0 +1,72 @@
+# ODCHub Stack — Hub + Gateway + PostgreSQL
+# Optional: Dragon bot (uncomment below)
+#
+# Usage:
+#   docker compose up -d
+#
+# Ports:
+#   4012  — NMDC (DC client connections)
+#   4013  — NMDC+TLS
+#   3000  — Gateway REST API
+#   3001  — Gateway Admin UI
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: odch
+      POSTGRES_USER: odch
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odch"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "4012:4012"
+      - "4013:4013"
+    volumes:
+      - socket:/run/odch
+      - hubconfig:/opt/opendchub/.opendchub
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  gateway:
+    image: ghcr.io/typhonius/odch-gateway:latest
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    volumes:
+      - socket:/run/odch
+    environment:
+      ODCH_DB_URL: postgres://odch:${DB_PASSWORD:-changeme}@postgres:5432/odch
+      ODCH_HUB_SOCKET: /run/odch/gateway.sock
+      ODCH_HUB_SECRET: ${HUB_SECRET:-changeme}
+    depends_on:
+      - hub
+      - postgres
+
+  # Optional: Dragon bot — uncomment to add fun commands and plugins
+  # dragon:
+  #   image: ghcr.io/typhonius/odchbot:latest
+  #   environment:
+  #     ODCH_HUB_HOST: hub
+  #     ODCH_HUB_PORT: 4012
+  #     ODCH_GATEWAY_URL: http://gateway:3000
+  #     ODCH_GATEWAY_KEY: ${GATEWAY_API_KEY:-changeme}
+  #   depends_on:
+  #     - hub
+  #     - gateway
+
+volumes:
+  pgdata:
+  socket:
+  hubconfig:

@@ -15,7 +15,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential autoconf automake \
-            perl libperl-dev libcrypt-dev libssl-dev checkinstall
+            libcrypt-dev libssl-dev checkinstall
 
       - name: Extract version from tag
         id: version
@@ -46,7 +46,7 @@ jobs:
             --pkglicense=GPL-2 \
             --pkggroup=net \
             --maintainer="typhonius@users.noreply.github.com" \
-            --requires="libssl3,libperl5.38,libcrypt1" \
+            --requires="libssl3,libcrypt1" \
             --nodoc \
             make install
 

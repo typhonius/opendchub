@@ -56,9 +56,6 @@
 #include "commands.h"
 #include "network.h"
 #include "userlist.h"
-#ifdef HAVE_PERL
-# include "perl_utils.h"
-#endif
 
 #ifndef HAVE_STRTOLL
 # ifdef HAVE_STRTOQ
@@ -253,7 +250,9 @@ void search(char *buf, struct user_t *user)
     * For direct users, we have the parsed nick and pattern.
     * For forked process forwards, parse from buf. */
    if(user->type != FORKED)
-     send_admin_event("$Event SEARCH %s %s|\r\n", user->nick, pattern);
+     {
+	json_event_search(user->nick, pattern);
+     }
    else
      {
 	/* buf is "$Search ip:port T?F?size?type?pattern|" or "$Search Hub:nick ..."
@@ -267,10 +266,7 @@ void search(char *buf, struct user_t *user)
 	if(sscanf(buf, "$Search %122[^:]:%50s %*c?%*c?%*[^?]?%*c?%255[^|]",
 		  ev_ip, ev_port, ev_pattern) >= 3)
 	  {
-	     if(strcmp(ev_ip, "Hub") == 0)
-	       send_admin_event("$Event SEARCH %s %s|\r\n", ev_port, ev_pattern);
-	     else
-	       send_admin_event("$Event SEARCH %s:%s %s|\r\n", ev_ip, ev_port, ev_pattern);
+	     /* Search events forwarded via JSON socket in json_event_search() */
 	  }
      }
 }
@@ -748,11 +744,7 @@ void chat(char *buf, struct user_t *user)
 	  }	
 	else if((user->type == OP_ADMIN) && (strncasecmp(temp, "!reloadscripts", 14) == 0))
 	  {
-	     uprintf(user, "<Hub-Security> Reloading scripts...|");
-	     if(pid > 0)
-	       script_reload = 1;
-	     else
-	       send_to_non_humans("$ReloadScripts|", FORKED, NULL);
+	     uprintf(user, "<Hub-Security> Script reloading not available (Perl removed).|");
 	  }
 	else if((user->type == OP_ADMIN) && (strncasecmp(temp, "!addperm", 8) == 0))
 	  {
@@ -811,7 +803,37 @@ void chat(char *buf, struct user_t *user)
 
 	/* Send admin event for chat.
 	 * buf is "<nick> message|" - already pipe-terminated */
-	send_admin_event("$Event CHAT %s", buf);
+
+	/* Send JSON event for gateway.
+	 * Parse "<nick> message|" into nick and message. */
+	{
+	   char json_nick[MAX_NICK_LEN+1];
+	   const char *msg_start;
+	   if(buf[0] == '<')
+	     {
+		const char *end = strchr(buf + 1, '>');
+		if(end != NULL)
+		  {
+		     int nlen = end - buf - 1;
+		     if(nlen > MAX_NICK_LEN) nlen = MAX_NICK_LEN;
+		     strncpy(json_nick, buf + 1, nlen);
+		     json_nick[nlen] = '\0';
+		     msg_start = end + 1;
+		     if(*msg_start == ' ') msg_start++;
+		     /* Strip trailing pipe */
+		     int mlen = strlen(msg_start);
+		     if(mlen > 0 && msg_start[mlen-1] == '|') mlen--;
+		     char *msg_clean = malloc(mlen + 1);
+		     if(msg_clean != NULL)
+		       {
+			  memcpy(msg_clean, msg_start, mlen);
+			  msg_clean[mlen] = '\0';
+			  json_event_chat(json_nick, msg_clean);
+			  free(msg_clean);
+		       }
+		  }
+	     }
+	}
 	}
      }
 }
@@ -1010,28 +1032,11 @@ void get_info(char *buf, struct user_t *user)
 	    }
      }
   
-   /* Nobody should be able to fool us by pretenting to be the a script.  */
-   if((strncmp(requesting, "$Script", 7) == 0) && ((user->type & (FORKED | SCRIPT)) == 0))
-     return;
-   
    /* Check if the requested user is connected to this process.  */
    if((from_user = get_human_user(requested)) != NULL)
-     {	
-	/* Check if it's the $Script user, if so, send user info to scripts if
-	 * we are the parent.  */
-	if(strncmp(requesting, "$Script", 7) == 0)
-	  {	     	 
-#ifdef HAVE_PERL
-	     command_to_scripts("$Script user_info %s %lu %s %d %s|", from_user->nick,
-				from_user->ip, from_user->hostname, from_user->type, from_user->version);
-	     if(pid > 0)
-	       send_user_info(from_user, requesting, TO_ALL);
-	     else
-	       send_user_info(from_user, requesting, PRIV);
-#endif
-	  }
+     {
 	/* If the requesting user is connected to this process.  */
-	else if(get_human_user(requesting) != NULL)
+	if(get_human_user(requesting) != NULL)
 	  send_user_info(from_user, requesting, TO_ALL);
 	/* If the requesting user isn't connected to this process, forward it.  */
 	else
@@ -1073,12 +1078,11 @@ int my_info(char *org_buf, struct user_t *user)
 	/* If user is a process, just forward the command.  */
 	if(user->type == FORKED)
 	  {
-	     send_to_non_humans(org_buf, FORKED | SCRIPT, user);
+	     send_to_non_humans(org_buf, FORKED, user);
 	     send_to_humans(org_buf, REGULAR | REGISTERED | OP | OP_ADMIN,
 			    user);
 	     /* Emit MYINFO event for MyINFO forwarded from child process.
 	      * buf points past "$MyINFO $ALL ", so it starts with "nick ..." */
-	     send_admin_event("$Event MYINFO %s", buf);
 	     return 1;
 	  }
 	if(*user->nick == (char) NULL)
@@ -1120,12 +1124,7 @@ int my_info(char *org_buf, struct user_t *user)
 		  return -1;
 	       }
 	     snprintf(send_buf, strlen(buf) + 14, "$MyINFO $ALL %s", buf);
-	     /* If it's the $Script user, send to all scripts.  */
-	     if((strncmp(to_nick, "$Script", 7) == 0) && (pid > 0))
-	       send_to_non_humans(send_buf, SCRIPT, user);
-	     /* Otherwise, send to the specified user.  */
-	     else
-	       send_to_user(send_buf, to_user);
+	     send_to_user(send_buf, to_user);
 	     free(send_buf);
 	  }
 	else
@@ -1355,11 +1354,6 @@ int my_info(char *org_buf, struct user_t *user)
 		       send_to_humans(quit_string, REGULAR | REGISTERED | OP
 				      | OP_ADMIN, user);
 		       send_to_non_humans(quit_string, FORKED, NULL);
-#ifdef HAVE_PERL
-		       command_to_scripts("$Script user_disconnected %c%c", '\005', '\005');
-		       non_format_to_scripts(user->nick);
-		       command_to_scripts("|");
-#endif
 		    }
 		  return 1;
 	       }
@@ -1381,14 +1375,9 @@ int my_info(char *org_buf, struct user_t *user)
 		       remove_human_from_hash(user->nick);
 		       user->type = NON_LOGGED;
 		       snprintf(quit_string, sizeof(quit_string), "$Quit %s|", user->nick);
-		       send_to_humans(quit_string, REGULAR | REGISTERED | OP 
+		       send_to_humans(quit_string, REGULAR | REGISTERED | OP
 				      | OP_ADMIN, user);
 		       send_to_non_humans(quit_string, FORKED, NULL);
-#ifdef HAVE_PERL		       
-		       command_to_scripts("$Script user_disconnected %c%c", '\005', '\005');
-		       non_format_to_scripts(user->nick);
-		       command_to_scripts("|");		       
-#endif		       
 		    }		  
 		  return 1;
 	       }
@@ -1431,52 +1420,38 @@ int my_info(char *org_buf, struct user_t *user)
      }       
    
    /* Add share to total_share.  */
-   if((user->type & (FORKED | SCRIPT)) == 0)
+   if((user->type & (FORKED)) == 0)
      add_total_share(user->share);
    
-   /* To scripts, also send the info not covered by MyINFO.  */     
-#ifdef HAVE_PERL
-   if((new_user != 0) 
-      && ((user->type & (REGULAR | REGISTERED | OP | OP_ADMIN)) != 0))
-     command_to_scripts("$Script user_info %s %lu %s %d %s|", user->nick,
-			user->ip, user->hostname, user->type, user->version);
-#endif
-   
    /* And then send the MyINFO string. */
-   send_to_non_humans(org_buf, FORKED | SCRIPT, user);
+   send_to_non_humans(org_buf, FORKED, user);
 
    send_to_humans(org_buf, REGULAR | REGISTERED | OP | OP_ADMIN, NULL);
 
    /* Send admin events for JOIN (new users) and MYINFO (all updates).
     * For MYINFO, forward the original MyINFO string after "$MyINFO $ALL ". */
    if(new_user != 0)
-     send_admin_event("$Event JOIN %s|", user->nick);
-   send_admin_event("$Event MYINFO %s", org_buf + 13);
-
-   /* Send to scripts — pass nick and TLS status as two arguments */
-#ifdef HAVE_PERL
-   if(new_user)
      {
-	const char *conn_type = "plain";
+	/* JSON event: user join */
+	{
+	   char ip_str[INET_ADDRSTRLEN];
+	   struct in_addr addr;
+	   addr.s_addr = user->ip;
+	   inet_ntop(AF_INET, &addr, ip_str, sizeof(ip_str));
 #ifdef HAVE_SSL
-	if(user->ssl != NULL)
-	  conn_type = "tls";
+	   json_event_user_join(user->nick, ip_str, user->ssl != NULL);
+#else
+	   json_event_user_join(user->nick, ip_str, 0);
 #endif
-	if(user->type == REGULAR)
-	  command_to_scripts("$Script new_user_connected %c%c%s%c%c%s|",
-			     '\005', '\005', user->nick, '\005', '\005', conn_type);
-	else if(user->type == OP_ADMIN)
-	  command_to_scripts("$Script op_admin_connected %c%c%s%c%c%s|",
-			     '\005', '\005', user->nick, '\005', '\005', conn_type);
-	else if(user->type == OP)
-	  command_to_scripts("$Script op_connected %c%c%s%c%c%s|",
-			     '\005', '\005', user->nick, '\005', '\005', conn_type);
-	else if(user->type == REGISTERED)
-	  command_to_scripts("$Script reg_user_connected %c%c%s%c%c%s|",
-			     '\005', '\005', user->nick, '\005', '\005', conn_type);
+	}
      }
-#endif
-   
+   /* JSON event: myinfo update */
+   json_event_myinfo(user->nick,
+		     user->desc ? user->desc : "",
+		     "", /* speed derived from con_type, but user_list sends it */
+		     user->email ? user->email : "",
+		     user->share);
+
    if((new_user != 0) && (user->type == REGULAR))
      add_human_to_hash(user);
    
@@ -1502,12 +1477,7 @@ int validate_nick(char *buf, struct user_t *user)
 {
    char temp_nick[MAX_NICK_LEN+1];
    char command[21];
-   char kickstring[MAX_NICK_LEN+10];
-   char hello_buf[MAX_NICK_LEN+10];
-   struct sock_t *sock;
-   struct user_t *non_human;
    char *user_list_nick;
-   char *op_list;
    
    if(sscanf(buf, "%20s %50s|", command, temp_nick) != 2)
      {                                                                         
@@ -1533,7 +1503,7 @@ int validate_nick(char *buf, struct user_t *user)
      }
    
    /* Check that it isn't "Hub-Security" */
-   if((strncasecmp(temp_nick, "hub-security", 12) == 0) && (user->type != SCRIPT))
+   if(strncasecmp(temp_nick, "hub-security", 12) == 0)
      {	
 	/* I know that it should be spelled "ValidateDenied", but since the
 	 * protocol is designed this way, we can't expect the clients to 
@@ -1543,8 +1513,7 @@ int validate_nick(char *buf, struct user_t *user)
      }
    
    /* Or "Administrator"  */
-   if((strncasecmp(temp_nick, "Administrator", 13) == 0) 
-      && (user->type != SCRIPT))
+   if(strncasecmp(temp_nick, "Administrator", 13) == 0)
      {
 	uprintf(user, "$ValidateDenide %s|", temp_nick);
 	return 0;
@@ -1555,28 +1524,17 @@ int validate_nick(char *buf, struct user_t *user)
        || (get_human_user(temp_nick) != NULL)) 
       && (check_if_registered(temp_nick) == 0))
      {
-	if(user->type != SCRIPT)
-	  {	     
-	     uprintf(user, "$ValidateDenide %s|", temp_nick);
-	     memset(temp_nick, 0, sizeof(temp_nick));
-	     return -1;
-	  }
-	else
-	  {
-	     /* If user is a script, kick the user who has taken the nick.  */
-	     logprintf(4, "validate_nick() - Warning: Script already in user_list.\n");
-	     snprintf(kickstring, sizeof(kickstring), "$Kick %s|", temp_nick);
-	     kick(kickstring, NULL, 0);
-	  }
+	uprintf(user, "$ValidateDenide %s|", temp_nick);
+	memset(temp_nick, 0, sizeof(temp_nick));
+	return -1;
      }
 
-   if(user->type != SCRIPT)
      {
 	strncpy(user->nick, temp_nick, MAX_NICK_LEN);
 	user->nick[MAX_NICK_LEN] = '\0';
 	if(check_if_registered(temp_nick) != 0)
 	  {
-	     hub_mess(user, GET_PASS_MESS);	     
+	     hub_mess(user, GET_PASS_MESS);
 
 	     if(check_if_banned(user, NICKBAN) != 0)
 	       {
@@ -1618,42 +1576,6 @@ int validate_nick(char *buf, struct user_t *user)
 	     if(welcome_mess(user) == -1)
 	       return 0;
           }
-     }
-   /* And if user is a script, set the nick and add to nicklist.  */
-   else
-     {
-	strncpy(user->nick, temp_nick, MAX_NICK_LEN);
-	user->nick[MAX_NICK_LEN] = '\0';
-	if(add_user_to_list(user) == 0)
-	  {
-	     increase_user_list();
-	     add_user_to_list(user);
-	  }
-	snprintf(hello_buf, sizeof(hello_buf), "$Hello %s|", user->nick);
-	sock = human_sock_list;
-	op_list = get_op_list();
-	while(sock != NULL)
-	  {
-	     if(((sock->user->type & (REGULAR | REGISTERED | OP | OP_ADMIN | FORKED)) != 0)
-		&& (user != sock->user))
-	       {
-		  send_to_user(hello_buf, sock->user);
-		  send_to_user(op_list, sock->user);
-	       }
-	     sock = sock->next;
-	  }
-	non_human = non_human_user_list;
-	while(non_human != NULL)
-	  {
-	     if(((non_human->type & FORKED) != 0)
-		&& (user != non_human))
-	       {
-		  send_to_user(hello_buf, non_human);
-		  send_to_user(op_list, non_human);
-	       }
-	     non_human = non_human->next;
-	  }
-	free(op_list);
      }
    return 1;
 }
@@ -2049,22 +1971,10 @@ void kick(char *buf, struct user_t *user, int tempban)
 	     ballow(ban_command, BAN, user);
 	  }
 	
-#ifdef HAVE_PERL
-	command_to_scripts("$Script kicked_user %c%c%s%c%c%s|",
-			   '\005', '\005', nick, '\005', '\005', user->nick);
-#endif
-	/* Send admin event for kick */
-	send_admin_event("$Event KICK %s %s|", nick, user->nick);
+	/* Send event for kick */
+	json_event_kick(nick, user->nick);
      }
 
-   else if(user->type == SCRIPT)
-     {
-	if(check_if_on_user_list(nick) == NULL)
-	  return;
-	
-	remove_user_from_list(nick);
-     }   
-   
    if((to_user = get_human_user(nick)) != NULL)
      {	
 	to_user->rem = REMOVE_USER | SEND_QUIT | REMOVE_FROM_LIST;
@@ -2080,7 +1990,7 @@ void quit_program(void)
    /* If we are a child process and the command wasn't sent from a forked
     * process, don't remove users.  */
    if(pid <= 0) 
-     send_to_non_humans("$QuitProgram|", FORKED | SCRIPT, NULL);
+     send_to_non_humans("$QuitProgram|", FORKED, NULL);
    
    else
      {	   
@@ -2100,6 +2010,9 @@ void quit_program(void)
 	shmctl(user_list_shm_shm, IPC_RMID, NULL);	
 	write_config_file();	  
 	
+	/* Clean up JSON gateway socket */
+	json_socket_cleanup();
+
 	/* If we are the parent, close the listening sockets and close the temp file */
 	close(listening_socket);
 	close(listening_unx_socket);
@@ -2127,42 +2040,6 @@ int secure_strcmp(const char *a, const char *b)
    return result;
 }
 
-/* Validate admin pass */
-int check_admin_pass(char *buf, struct user_t *user)
-{
-   char command[21];
-   char pass[MAX_ADMIN_PASS_LEN+1];
-
-   memset(pass, 0, sizeof(pass));
-   if(sscanf(buf, "%20s %120[^|]|", command, pass) != 2)
-     {
-	send_to_user("\r\nBad format for admin password command\r\n", user);
-	return 0;
-     }
-
-   if(secure_strcmp(pass, admin_pass) == 0)
-     {
-	if(get_human_user("Administrator") != NULL)
-	  {	     
-	     send_to_user("\r\nAdministrator is already logged in.\r\n", user);
-	     return 0;
-	  }		
-	send_to_user("\r\nPassword accepted\r\n", user);
-	user->type = ADMIN;
-	remove_human_from_hash(user->nick);
-	strncpy(user->nick, "Administrator", MAX_NICK_LEN);
-	user->nick[MAX_NICK_LEN] = '\0';
-	add_human_to_hash(user);
-	logprintf(1, "%s logged in from %s.\n", user->nick, user->hostname);
-     }
-   else
-     {
-	send_to_user("\r\nBad Admin Password\r\n", user);
-	return 0;
-     }
-   return 1;
-}
-    
 /* Set various variables through the admin connection */
 void set_var(char *org_buf, struct user_t *user)
 {
@@ -2296,21 +2173,6 @@ void set_var(char *org_buf, struct user_t *user)
 	       uprintf(user, "<Hub-Security> Min Share set to %lld Bytes|", min_share);
 	  }
      }
-   else if(strncmp(buf, "admin_pass ", 11) == 0)
-     {
-	buf += 11;
-	{
-	   int slen = cut_string(buf, '|');
-	   if(slen < 0) slen = 0;
-	   if(slen > MAX_ADMIN_PASS_LEN) slen = MAX_ADMIN_PASS_LEN;
-	   strncpy(admin_pass, buf, slen);
-	   admin_pass[slen] = '\0';
-	}
-	if(user->type == ADMIN)
-	  uprintf(user, "\r\nAdmin Pass updated successfully\r\n");
-	else if(user->type == OP_ADMIN)
-	  uprintf(user, "<Hub-Security> Admin Pass updated successfully|");
-     }
    else if(strncmp(buf, "default_pass ", 13) == 0)
      {
         buf += 13;
@@ -2367,22 +2229,6 @@ void set_var(char *org_buf, struct user_t *user)
 	else if(user->type == OP_ADMIN)
 	  uprintf(user, "<Hub-Security> Listening Port set to %u|", listening_port);
      }   
-   else if(!strncmp(buf, "admin_port ", 11))
-     {
-	/* Admin port cannot be changed at runtime for security reasons */
-	if(user->type == ADMIN)
-	  uprintf(user, "\r\nAdmin port cannot be changed at runtime. Edit config and restart.\r\n");
-	else if(user->type == OP_ADMIN)
-	  uprintf(user, "<Hub-Security> Admin port cannot be changed at runtime|");
-     }
-   else if(!strncmp(buf, "admin_localhost ", 16))
-     {
-	/* Admin localhost restriction cannot be changed at runtime for security */
-	if(user->type == ADMIN)
-	  uprintf(user, "\r\nAdmin localhost setting cannot be changed at runtime. Edit config and restart.\r\n");
-	else if(user->type == OP_ADMIN)
-	  uprintf(user, "<Hub-Security> Admin localhost setting cannot be changed at runtime|");
-     }
    else if(strncmp(buf, "public_hub_host ", 16) == 0)
      {
 	buf += 16;
@@ -2641,11 +2487,7 @@ void set_var(char *org_buf, struct user_t *user)
    
    if(strncmp(org_buf + 5, "motd ", 5) != 0)
      {	
-	send_to_non_humans(org_buf, FORKED | SCRIPT, user);
-	
-	/* If it was sent from a script, we need to send it back.  */
-	if((user->type == SCRIPT) && (pid > 0))
-	  send_to_user(org_buf, user);
+	send_to_non_humans(org_buf, FORKED, user);
      }   
 }
 
@@ -2834,73 +2676,6 @@ int ballow(char *buf, int type, struct user_t *user)
 	  snprintf(ban_line, sizeof(ban_line), "%s 0", ban_host);
      }
    ret = add_line_to_file(ban_line, path); 
-   
-   /* Send to scripts */
-#ifdef HAVE_PERL
-   if(ret == 1)
-     {
-	if(type == BAN)
-	  {	     
-	     if (ban_time > 0)
-	       {
-		  command_to_scripts("$Script added_temp_ban %c%c", '\005', '\005');
-		  non_format_to_scripts(ban_host);
-		  command_to_scripts("%c%c%lu", '\005', '\005', ban_time);
-	       }
-	     else
-	       {
-		  command_to_scripts("$Script added_perm_ban %c%c", '\005', '\005');
-		  non_format_to_scripts(ban_host);
-	       }
-	     command_to_scripts("|");
-	  }	
-	else if(type == ALLOW)
-	    {	     
-	       if (ban_time > 0)
-		 {
-		    command_to_scripts("$Script added_temp_allow %c%c", '\005', '\005');
-		    non_format_to_scripts(ban_host);
-		    command_to_scripts("%c%c%lu", '\005', '\005', ban_time);
-		 }
-	       else
-		 {
-		    command_to_scripts("$Script added_perm_allow %c%c", '\005', '\005');
-		    non_format_to_scripts(ban_host);
-		 }
-	       command_to_scripts("|");
-	    }
-	else if(type == NICKBAN)
-	    {
-	       if (ban_time > 0)
-		 {
-		    command_to_scripts("$Script added_temp_nickban %c%c", '\005', '\005');
-		    non_format_to_scripts(ban_host);
-		    command_to_scripts("%c%c%lu", '\005', '\005', ban_time);
-		 }
-	       else
-		 {
-		    command_to_scripts("$Script added_perm_nickban %c%c", '\005', '\005');
-		    non_format_to_scripts(ban_host);
-		 }
-	       command_to_scripts("|");
-	    }
-	else if(type == GAG)
-	    {
-	       if (ban_time > 0)
-		 {
-		    command_to_scripts("$Script added_temp_gag %c%c", '\005', '\005');
-		    non_format_to_scripts(ban_host);
-		    command_to_scripts("%c%c%lu", '\005', '\005', ban_time);
-		 }
-	       else
-		 {
-		    command_to_scripts("$Script added_perm_gag %c%c", '\005', '\005');
-		    non_format_to_scripts(ban_host);
-		 }
-	       command_to_scripts("|");
-	    }	
-     }   
-#endif
    
    return ret;
 }
@@ -3124,11 +2899,6 @@ void op_force_move(char *buf, struct user_t *user)
 	send_to_humans(quit_string, REGULAR | REGISTERED | OP
 		       | OP_ADMIN, to_user);
 	send_to_non_humans(quit_string, FORKED, NULL);
-#ifdef HAVE_PERL
-	command_to_scripts("$Script user_disconnected %c%c", '\005', '\005');
-	non_format_to_scripts(to_user->nick);
-	command_to_scripts("|");		       
-#endif		       	
      }
    else	
      /* If the user wasn't in this process, forward to other processes.  */
@@ -3145,12 +2915,6 @@ void redirect_all(char *buf, struct user_t *user)
    send_to_humans(move_string, REGULAR | REGISTERED | OP, user);
    remove_all(UNKEYED | NON_LOGGED | REGULAR | REGISTERED | OP, 1, 1);
    send_to_non_humans(move_string, FORKED, user);
-
-   /* To scripts. */
-#ifdef HAVE_PERL
-   command_to_scripts("$Script started_redirecting %c%c", '\005', '\005');
-   non_format_to_scripts(buf);
-#endif
 }
 
 /* Handles the $Up and $UpToo commands, sent from linked hubs */
@@ -3661,12 +3425,6 @@ void send_mass_message(char *buffy, struct user_t *user)
    sem_give(user_list_sem);
    
    free(sendbuf);
-   
-   /* Send to scripts */
-#ifdef HAVE_PERL
-   command_to_scripts("$Script mass_message %c%c", '\005', '\005');
-   non_format_to_scripts(buffy);
-#endif
 }
 
 /* Remove all expired temporary bans.  */

@@ -59,10 +59,6 @@
 #include "utils.h"
 #include "fileio.h"
 #include "network.h"
-#ifdef HAVE_PERL
-# include "perl_utils.h"
-#endif
-
 /* Sends as many packets as it takes. */
 /* This was taken from Beej's guide to network programming: */
 /* http://www.ecst.csuchico.edu/~beej/guide/net/html/ */
@@ -168,12 +164,18 @@ void get_socket_action(void)
    total = count_users(0xFFFF);
 
    if(pid > 0)
-     total += 2;
+     {
+	total += 2;
+	/* Extra slots for JSON gateway sockets */
+	if(json_listen_sock >= 0)
+	  total++;
+	if(json_client_sock >= 0)
+	  total++;
+     }
    else if(pid == 0)
      {
 	if(listening_socket != -1)
 	  total++;
-	if(admin_listening_socket != -1)
 	  total++;
 #ifdef HAVE_SSL
 	if(tls_listening_socket != -1)
@@ -196,14 +198,23 @@ void get_socket_action(void)
 	add_fd(&ufds[0], listening_unx_socket);
 	add_fd(&ufds[1], listening_udp_socket);
 	num = 2;
+	/* Add JSON gateway socket (listener and/or connected client) */
+	if(json_listen_sock >= 0)
+	  {
+	     add_fd(&ufds[num], json_listen_sock);
+	     num++;
+	  }
+	if(json_client_sock >= 0)
+	  {
+	     add_fd(&ufds[num], json_client_sock);
+	     num++;
+	  }
      }
    else if((pid == 0) && (listening_socket != -1))
      {
 	add_fd(&ufds[0], listening_socket);
 	num = 1;
-	if(admin_listening_socket != -1)
 	  {
-	     add_fd(&ufds[num], admin_listening_socket);
 	     num++;
 	  }
 #ifdef HAVE_SSL
@@ -247,15 +258,8 @@ void get_socket_action(void)
 	if(((fds->revents & POLLIN) != 0) || ((fds->revents & POLLPRI) != 0))
 	  {
 	     matched = 0;
-	     /* Check if it's a new admin connection */
-	     if((pid == 0) && (admin_listening_socket != -1)
-		&& (fds->fd == admin_listening_socket))
-	       {
-		  new_human_user(admin_listening_socket);
-		  matched = 1;
-	       }
 	     /* Check if it's a new connection */
-	     else if((pid == 0) && (listening_socket != -1)
+	     if((pid == 0) && (listening_socket != -1)
 		     && (fds->fd == listening_socket))
 	       {
 		  new_human_user(listening_socket);
@@ -280,6 +284,20 @@ void get_socket_action(void)
 	     else if((pid > 0) && (fds->fd == listening_udp_socket))
 	       {
 		  udp_action();
+		  matched = 1;
+	       }
+	     /* JSON gateway socket: new connection */
+	     else if((pid > 0) && (json_listen_sock >= 0)
+		     && (fds->fd == json_listen_sock))
+	       {
+		  json_socket_accept();
+		  matched = 1;
+	       }
+	     /* JSON gateway socket: data from connected client */
+	     else if((pid > 0) && (json_client_sock >= 0)
+		     && (fds->fd == json_client_sock))
+	       {
+		  json_socket_handle_data();
 		  matched = 1;
 	       }
 
@@ -369,8 +387,6 @@ void get_socket_action(void)
    FD_ZERO(&fds);
 
    /* Add our listening tcp, udp  and unix socket to the set if we are the parent */
-   if(admin_listening_socket != -1)
-     FD_SET(admin_listening_socket, &fds);
    if(listening_socket != -1)
      FD_SET(listening_socket, &fds);
 #ifdef HAVE_SSL
@@ -407,9 +423,7 @@ void get_socket_action(void)
      }
 
      /* Check if it's a new admin connection */
-   if((admin_listening_socket != -1) && FD_ISSET(admin_listening_socket, &fds))
      {
-	new_human_user(admin_listening_socket);
 	return;
      }
 
@@ -1261,10 +1275,10 @@ void send_to_user(char *buf, struct user_t *user)
 
 	     if((errno != EAGAIN) && (errno != EINTR))
 	       {
-		  /* If it's a forked or a script process, this error can mean
+		  /* If it's a forked process, this error can mean
 		   * that the process is trying to send to us at the same time
 		   * as we are trying to send to it.  */
-		  if(((user->rem == 0) && (user->type & (FORKED | SCRIPT)) == 0)
+		  if(((user->rem == 0) && (user->type & FORKED) == 0)
 		     || ((user->outbuf != NULL)
 			 && (strlen(user->outbuf) >= MAX_BUF_SIZE)))
 		    {

@@ -72,9 +72,6 @@
 #include "utils.h"
 #include "fileio.h"
 #include "userlist.h"
-#ifdef HAVE_PERL
-# include "perl_utils.h"
-#endif
 
 #ifndef SIGCHLD
 # define SIGCHLD SIGCLD
@@ -87,9 +84,6 @@ struct user_t *non_human_user_list = NULL;
 struct user_t **human_hash_table = NULL;
 struct sock_t *human_sock_list = NULL;
 unsigned int listening_port = 0;
-unsigned int admin_port = 0;
-BYTE   admin_localhost = 1;
-int    admin_listening_socket = 0;
 int    listening_socket = 0;
 int    listening_unx_socket = 0;
 int    listening_udp_socket = 0;
@@ -115,7 +109,6 @@ int    total_share_shm = 0;
 int    total_share_sem = 0;
 int    user_list_shm_shm = 0;
 int    user_list_sem = 0;
-char   admin_pass[MAX_ADMIN_PASS_LEN+1] = {0};
 char   link_pass[MAX_ADMIN_PASS_LEN+1] = {0};
 char   default_pass[MAX_ADMIN_PASS_LEN+1] = {0};
 volatile sig_atomic_t   upload = 0;
@@ -125,7 +118,6 @@ volatile sig_atomic_t   do_write = 0;
 volatile sig_atomic_t   do_send_linked_hubs = 0;
 volatile sig_atomic_t   do_purge_user_list = 0;
 volatile sig_atomic_t   do_fork = 0;
-volatile sig_atomic_t   script_reload = 0;
 volatile sig_atomic_t   do_alarm = 0;
 char   config_dir[MAX_FDP_LEN+1] = {0};
 char   un_sock_path[MAX_FDP_LEN+1] = {0};
@@ -167,8 +159,6 @@ int set_default_vars(void)
    check_key = 0;
    reverse_dns = 0;
    redirect_host[0] = '\0';
-   admin_port = 0xD1C0;  /* Easy to remember :) */
-   admin_localhost = 1;
    searchcheck_exclude_internal = 1;
    searchcheck_exclude_all = 0;
    kick_bantime = 5;
@@ -197,9 +187,6 @@ int set_default_vars(void)
      }
    snprintf(hub_full_mess, 50, "Sorry, this hub is full at the moment");
    snprintf(default_pass, sizeof(default_pass), "");
-   printf("Please, supply an admin pass for hub: ");
-   scanf("%50s", admin_pass);
-   printf("Your admin pass is set to %s\n\n", admin_pass);
    printf("Please, supply a password for hub linking: ");
    scanf("%50s", link_pass);
    printf("Your Hub linking pass is set to %s\n\n", link_pass);
@@ -227,18 +214,6 @@ void kill_forked_process(void)
 	  }
      }
    
-   if(admin_listening_socket != -1)
-     {
-	while(((erret =  close(admin_listening_socket)) != 0) && (errno == EINTR))
-	  logprintf(1, "Error - In kill_forked_process()/close(): Interrupted system call. Trying again.\n");
-
-	if(erret != 0)
-	  {
-	     logprintf(1, "Error - In kill_forked_process()/close(): ");
-	     logerror(1, errno);
-	  }
-     }
-
 #ifdef HAVE_SSL
    if(tls_listening_socket != -1)
      {
@@ -381,7 +356,7 @@ void fork_process(void)
 	 * connections between parent and child, not between children. Also
 	 * remove connections to other hubs, we let the parent take care of
 	 * those.*/
-	remove_all(SCRIPT | LINKED | FORKED, 0, 0);
+	remove_all(LINKED | FORKED, 0, 0);
 	
 	/* If some other process already has opened the socket, we'll exit.  */
 	if(set_listening_pid((int)getpid()) <= 0)
@@ -394,11 +369,6 @@ void fork_process(void)
 	     quit = 1;
 	  }
 	
-	if((admin_listening_socket = get_listening_socket(admin_port, admin_localhost)) == -1)
-	  {
-	     logprintf(1, "Admin listening socket disabled\n");
-	  }
-
 #ifdef HAVE_SSL
 	if(tls_port != 0 && ssl_ctx != NULL)
 	  {
@@ -508,9 +478,8 @@ void switch_listening_process(char *buf, struct user_t *user)
    else if(strncmp(buf, "$OpenListen", 11) == 0)
      {
 	/* Check if we want to accept new clients in this process.  */
-	nbr_of_users = count_users(UNKEYED | NON_LOGGED | REGULAR 
-				   | REGISTERED | OP | OP_ADMIN | ADMIN 
-				   | NON_LOGGED_ADM);
+	nbr_of_users = count_users(UNKEYED | NON_LOGGED | REGULAR
+				   | REGISTERED | OP | OP_ADMIN | ADMIN);
 	
 	if((nbr_of_users < users_per_fork) 
 	   && (nbr_of_users < (max_sockets-5)))
@@ -523,7 +492,6 @@ void switch_listening_process(char *buf, struct user_t *user)
 		       if((listening_socket = get_listening_socket(listening_port, 0)) == -1)
 			 logprintf(1, "Error - In switch_listening_process(): Couldn't open listening socket\n");
 		       
-		       admin_listening_socket = get_listening_socket(admin_port, admin_localhost);
 #ifdef HAVE_SSL
 		       if(tls_port != 0 && ssl_ctx != NULL)
 			 tls_listening_socket = get_listening_socket(tls_port, 0);
@@ -670,12 +638,6 @@ void handle_alarm(void)
    if((debug != 0) && (pid > 0))
      logprintf(2, "Alarm timer fired\n");
 
-   /* Send the hub_timer sub to the scripts.  */
-#ifdef HAVE_PERL
-   if(pid > 0)
-     command_to_scripts("$Script hub_timer|");
-#endif
-
    /* Check timeouts */
    non_human = non_human_user_list;
    while(non_human != NULL)
@@ -692,7 +654,7 @@ void handle_alarm(void)
    while(human_user != NULL)
      {
 	if((human_user->user->type &
-	    (UNKEYED | NON_LOGGED | NON_LOGGED_ADM)) != 0)
+	    (UNKEYED | NON_LOGGED)) != 0)
 	  {
 	     logprintf(2, "Timeout for non logged in user at %s, removing user\n", human_user->user->hostname);
 	     human_user->user->rem = REMOVE_USER | SEND_QUIT | REMOVE_FROM_LIST;
@@ -851,32 +813,11 @@ void send_user_info(struct user_t *from_user, char *to_user_nick, int all)
    sprintfa(send_buf, send_buf_size, "$%lld", from_user->share);
    sprintfa(send_buf, send_buf_size, "$|");
 
-   /* The $Script user represents all scripts, so send the string to all 
-    * running scripts.  */
-   if((pid > 0) && (strncmp(to_user_nick, "$Script", 7) == 0))
-     send_to_non_humans(send_buf, SCRIPT, NULL);
-   else if((to_user = get_human_user(to_user_nick)) != NULL)
+   if((to_user = get_human_user(to_user_nick)) != NULL)
      send_to_user(send_buf, to_user);
    else
      send_to_non_humans(send_buf, FORKED, NULL);
    free(send_buf);
-}
-
-/* Sends different hub messages to user */
-/* Send an event notification to all connected admin clients.
- * Events use the format: $Event TYPE data|
- * This allows admin connections to monitor hub activity in real-time. */
-void send_admin_event(char *format, ...)
-{
-   char buf[4096];
-   if(format)
-     {
-	va_list args;
-	va_start(args, format);
-	vsnprintf(buf, sizeof(buf), format, args);
-	va_end(args);
-	send_to_humans(buf, ADMIN, NULL);
-     }
 }
 
 void hub_mess(struct user_t *user, int mess_type)
@@ -997,17 +938,6 @@ void hub_mess(struct user_t *user, int mess_type)
 	snprintf(send_string, strlen(user->nick) + 12, "$Hello %s|", user->nick);
 	break;
 	
-      case INIT_ADMIN_MESS:
-	/* Construct the reply string */
-	if((send_string = malloc(sizeof(char) * 200)) == NULL)
-	  {
-	     logprintf(1, "Error - In hub_mess()/malloc(): ");
-	     logerror(1, errno);
-	     quit = 1;
-	     return;
-	  }
-	snprintf(send_string, 200, "\r\nOpen DC Hub, version %s, administrators port.\r\nAll commands begin with \'$\' and end with \'|\'.\r\nPlease supply administrators passord.\r\n", VERSION);
-	break;	
      }
 	
    /* Send the constructed string */
@@ -1081,10 +1011,7 @@ int handle_command(char *buf, struct user_t *user)
 	       {
 		  /* Only for non logged in users. If client wants to change
 		   * nick, it first has to disconnect.  */
-		  /* Also allowed for scripts to register their nick in the
-		   * nicklist.  */
-		  if((user->type == NON_LOGGED) 
-		     || ((user->type == SCRIPT) && (pid > 0)))
+		  if(user->type == NON_LOGGED)
 		    {
 		       if(validate_nick(temp, user) == 0)
 			 {
@@ -1138,7 +1065,7 @@ int handle_command(char *buf, struct user_t *user)
 	     else if(strncmp(temp, "$To: ", 5) == 0)
 	       {
 		  /* Only for logged in users */
-		  if((user->type & (UNKEYED | NON_LOGGED | SCRIPT | LINKED)) == 0)
+		  if((user->type & (UNKEYED | NON_LOGGED | LINKED)) == 0)
 		    to_from(temp, user);
 	       }
 	     
@@ -1161,8 +1088,8 @@ int handle_command(char *buf, struct user_t *user)
 	     /* The Search command */
 	     else if(strncmp(temp, "$Search ", 8) == 0)
 	       {
-		  if((user->type & (REGULAR | REGISTERED | OP | OP_ADMIN 
-				   | FORKED | SCRIPT)) != 0)
+		  if((user->type & (REGULAR | REGISTERED | OP | OP_ADMIN
+				   | FORKED)) != 0)
 		    search(temp, user);
 	       }
 	     
@@ -1190,7 +1117,7 @@ int handle_command(char *buf, struct user_t *user)
 	     /* The kick command */
 	     else if(strncasecmp(temp, "$Kick ", 6) == 0)
 	       {
-		  if((user->type & (OP | OP_ADMIN | ADMIN | FORKED | SCRIPT)) != 0)
+		  if((user->type & (OP | OP_ADMIN | ADMIN | FORKED)) != 0)
 		    {
 		       kick(temp, user, 1);
 		    }
@@ -1212,7 +1139,7 @@ int handle_command(char *buf, struct user_t *user)
 	     /* The chat command, starts with <nick> */
 	     else if(*temp == '<')
 	       {
-		  if((user->type & (SCRIPT | UNKEYED | LINKED | NON_LOGGED)) == 0)
+		  if((user->type & (UNKEYED | LINKED | NON_LOGGED)) == 0)
 		    chat(temp, user);
 	       }
 	     
@@ -1240,10 +1167,18 @@ int handle_command(char *buf, struct user_t *user)
 		       /* Emit admin events when JOIN/QUIT forwarded from child.
 			* temp is "$Hello nick|" or "$Quit nick|" - already
 			* pipe-terminated, so use %s without extra pipe. */
-		       if(strncmp(temp, "$Hello ", 7) == 0)
-			 send_admin_event("$Event JOIN %s", temp + 7);
-		       else if(strncmp(temp, "$Quit ", 6) == 0)
-			 send_admin_event("$Event QUIT %s", temp + 6);
+		       if(strncmp(temp, "$Quit ", 6) == 0)
+			 {
+			    /* JSON event: extract nick from "$Quit nick|" */
+			    {
+			       char jnick[MAX_NICK_LEN+1];
+			       strncpy(jnick, temp + 6, MAX_NICK_LEN);
+			       jnick[MAX_NICK_LEN] = '\0';
+			       char *pipe = strchr(jnick, '|');
+			       if(pipe) *pipe = '\0';
+			       json_event_user_quit(jnick);
+			    }
+			 }
 		    }
 	       }
 	     
@@ -1279,9 +1214,8 @@ int handle_command(char *buf, struct user_t *user)
 		  redirect_all(temp + 11, user);
 	       }	     
 	     
-	     else if((strncasecmp(temp, "$QuitProgram", 12) == 0) 
-		     && ((user->type == FORKED) || (user->type == ADMIN) 
-			 || (user->type == SCRIPT)))
+	     else if((strncasecmp(temp, "$QuitProgram", 12) == 0)
+		     && ((user->type == FORKED) || (user->type == ADMIN)))
 	       {
 		  if(user->type == ADMIN)
 		    uprintf(user, "\r\nShutting down hub...\r\n");
@@ -1305,25 +1239,15 @@ int handle_command(char *buf, struct user_t *user)
 		  redirect_all(temp+13, user);
 	       }
 	     
-	     else if((strncasecmp(temp, "$AdminPass", 10) == 0) && (user->type == NON_LOGGED_ADM))
-	       {
-		  if(check_admin_pass(temp, user) == 0)
-		    {
-		       logprintf(2, "User from %s provided bad Admin Pass\n", user->hostname);
-		       free(temp);
-		       return 0;
-		    }
-	       }
-	     
 	     else if(strncasecmp(temp, "$Set ", 5) == 0)
 	       {
-		  if((user->type & (FORKED | SCRIPT | ADMIN)) != 0)
-		    set_var(temp, user); 
+		  if((user->type & (FORKED | ADMIN)) != 0)
+		    set_var(temp, user);
 	       }
 	     
 	     else if(strncasecmp(temp, "$Ban ", 5) == 0)
 	       {
-		  if((user->type & (ADMIN | SCRIPT)) != 0)
+		  if((user->type & ADMIN) != 0)
 		    {
 		       ret = ballow(temp+5, BAN, user);
 		       if(user->type == ADMIN)
@@ -1348,7 +1272,7 @@ int handle_command(char *buf, struct user_t *user)
 	       }
 	     else if(strncasecmp(temp, "$Allow ", 7) == 0)
 	       {
-		  if((user->type & (ADMIN | SCRIPT)) != 0)
+		  if((user->type & ADMIN) != 0)
 		    {
 		       ret = ballow(temp+7, ALLOW, user);
 		       if(user->type == ADMIN)
@@ -1373,7 +1297,7 @@ int handle_command(char *buf, struct user_t *user)
 	       }
 	     else if(strncasecmp(temp, "$Unban ", 7) == 0)
 	       {
-		  if((user->type & (ADMIN | SCRIPT)) != 0)
+		  if((user->type & ADMIN) != 0)
 		    {
 		       ret = unballow(temp+7, BAN);
 		       if(user->type == ADMIN)
@@ -1398,7 +1322,7 @@ int handle_command(char *buf, struct user_t *user)
 	       }
 	     else if(strncasecmp(temp, "$Unallow ", 9) == 0)
 	       {
-		  if((user->type & (ADMIN | SCRIPT)) != 0)
+		  if((user->type & ADMIN) != 0)
 		    {
 		       ret = unballow(temp+9, ALLOW);
 		       if(user->type == ADMIN)
@@ -1532,7 +1456,7 @@ int handle_command(char *buf, struct user_t *user)
 	       }
 	     else if(strncasecmp(temp, "$AddRegUser ", 12) == 0)
 	       {
-		  if((user->type & (ADMIN | SCRIPT)) != 0)
+		  if((user->type & ADMIN) != 0)
 		    {
 		       ret = add_reg_user(temp, user);
 		       if(user->type == ADMIN)
@@ -1553,7 +1477,7 @@ int handle_command(char *buf, struct user_t *user)
 	       }	     
 	     else if(strncasecmp(temp, "$RemoveRegUser ", 15) == 0)
 	       {
-		  if((user->type & (ADMIN | SCRIPT)) != 0)
+		  if((user->type & ADMIN) != 0)
 		    {
 		       ret = remove_reg_user(temp+15, user);
 		       if(user->type == ADMIN)
@@ -1572,7 +1496,7 @@ int handle_command(char *buf, struct user_t *user)
 	       }		  
 	     else if(strncasecmp(temp, "$AddLinkedHub ", 14) == 0)
 	       {
-		  if((user->type & (ADMIN | SCRIPT)) != 0)
+		  if((user->type & ADMIN) != 0)
 		    {
 		       ret = add_linked_hub(temp);
 		       if(user->type == ADMIN)
@@ -1593,7 +1517,7 @@ int handle_command(char *buf, struct user_t *user)
 	       }
 	     else if(strncasecmp(temp, "$RemoveLinkedHub ", 17) == 0)
 	       {
-		  if((user->type & (ADMIN | SCRIPT)) != 0)
+		  if((user->type & ADMIN) != 0)
 		    {
 		       ret = remove_linked_hub(temp+17);
 		       if(user->type == ADMIN)
@@ -1647,7 +1571,7 @@ int handle_command(char *buf, struct user_t *user)
 	       }
 	     else if(strncasecmp(temp, "$AddPerm ", 9) == 0)
 	       {
-		  if((user->type & (ADMIN | FORKED | SCRIPT)) != 0)
+		  if((user->type & (ADMIN | FORKED)) != 0)
 		    {
 		       ret = add_perm(temp, user);
 		       if(user->type == ADMIN)
@@ -1670,7 +1594,7 @@ int handle_command(char *buf, struct user_t *user)
 	       }
 	     else if(strncasecmp(temp, "$RemovePerm ", 12) == 0)
 	       {
-		  if((user->type & (ADMIN | FORKED | SCRIPT)) != 0)
+		  if((user->type & (ADMIN | FORKED)) != 0)
 		    {
 		       ret = remove_perm(temp, user);
 		       if(user->type == ADMIN)
@@ -1703,7 +1627,7 @@ int handle_command(char *buf, struct user_t *user)
 	       }
 	     else if(strncasecmp(temp, "$Gag ", 5) == 0)
 	       {
-		  if((user->type & (ADMIN | SCRIPT)) != 0)
+		  if((user->type & ADMIN) != 0)
 		    {
 		       ret = ballow(temp+5, GAG, user);
 		       if(user->type == ADMIN)
@@ -1735,7 +1659,7 @@ int handle_command(char *buf, struct user_t *user)
 	       }
 	     else if(strncasecmp(temp, "$UnGag ", 7) == 0)
 	       {
-		  if((user->type & (ADMIN | SCRIPT)) != 0)
+		  if((user->type & ADMIN) != 0)
 		    {
 		       ret = unballow(temp+7, GAG);
 		       if(user->type == ADMIN)
@@ -1758,7 +1682,7 @@ int handle_command(char *buf, struct user_t *user)
 	       }
 	     else if(strncasecmp(temp, "$NickBan ", 9) == 0)
 	       {
-		  if((user->type & (ADMIN | SCRIPT)) != 0)
+		  if((user->type & ADMIN) != 0)
 		    {
 		       ret = ballow(temp+9, NICKBAN, user);
 		       if(user->type == ADMIN)
@@ -1790,7 +1714,7 @@ int handle_command(char *buf, struct user_t *user)
 	       }
 	     else if(strncasecmp(temp, "$UnNickBan ", 11) == 0)
 	       {
-		  if((user->type & (ADMIN | SCRIPT)) != 0)
+		  if((user->type & ADMIN) != 0)
 		    {
 		       ret = unballow(temp+11, NICKBAN);
 		       if(user->type == ADMIN)
@@ -1811,74 +1735,12 @@ int handle_command(char *buf, struct user_t *user)
 			 }		      	
 		    }
 	       }	     	     
-	     /* Commands from script processes */
-#ifdef HAVE_PERL		  
-	     else if(strncasecmp(temp, "$NewScript", 10) == 0)
-	       {
-		  if(user->type == FORKED)
-		    {		       
-		       user->type = SCRIPT;
-		       snprintf(user->hostname, sizeof(user->hostname), "script_process");
-		       snprintf(user->nick, sizeof(user->nick), "script process");
-		    }		  
-	       }
-	     else if(strncmp(temp, "$Script ", 8) == 0)
-	       {		  
-		  if(pid > 0)
-		    {
-		       if(user->type == FORKED)
-			 non_format_to_scripts(temp);
-		    }
-		  else
-		    {		       
-		       if(user->type == SCRIPT)
-			 sub_to_script(temp + 8);		     
-		    }
-	       }
-	     else if(strncasecmp(temp, "$ReloadScripts", 14) == 0)
-	       {
-		  if((user->type & (ADMIN | FORKED)) != 0)
-		    {	
-		       if(user->type == ADMIN)
-			 uprintf(user, "\r\nReloading scripts...\r\n");
-		       if(pid > 0)
-			 script_reload = 1;
-		       
-		       else
-			 send_to_non_humans(temp, FORKED, user);
-		    }
-	       }
-	     else if(strncasecmp(temp, "$ScriptToUser ", 14) == 0)
-	       {
-		  if((user->type & (SCRIPT | FORKED)) != 0)
-		    script_to_user(temp, user);
-	       }
 	     else if(strncasecmp(temp, "$DataToAll ", 11) == 0)
 	       {
-		  if(user->type == ADMIN)
-		    send_to_humans(temp + 11, REGULAR | REGISTERED | OP | OP_ADMIN, user);
-		  else if(user->type == SCRIPT)
-		    {
-		       send_to_non_humans(temp, FORKED, user);
-		       send_to_humans(temp + 11, REGULAR | REGISTERED | OP | OP_ADMIN, user);
-		    }
-		  else if(user->type == FORKED)
+		  if((user->type & (ADMIN | FORKED)) != 0)
 		    send_to_humans(temp + 11, REGULAR | REGISTERED | OP | OP_ADMIN, user);
 	       }
-#endif
 	  }
-	
-	/* Send to scripts */
-#ifdef HAVE_PERL
-	if(((user->type & (REGULAR | REGISTERED | OP | OP_ADMIN)) != 0)
-	   && (temp != NULL) && (strlen(temp) > 2) 
-	   && (strncasecmp(temp, "$ReloadScripts", 14) != 0))
-	  {	     
-	     command_to_scripts("$Script data_arrival %c%c%s%c%c", 
-				'\005', '\005', user->nick, '\005', '\005');
-	     non_format_to_scripts(temp);
-	  }	
-#endif
 	
 	if((buf = strchr(buf, '|')) != NULL)
 	  buf++; 
@@ -1976,11 +1838,6 @@ int new_human_user(int sock)
 	inet_ntop(AF_INET, &client.sin_addr, user->hostname, sizeof(user->hostname));
      }
    
-   /* Send to scripts */
-#ifdef HAVE_PERL
-   command_to_scripts("$Script attempted_connection %c%c%s|", '\005', '\005', user->hostname);
-#endif
-   
    /* Set user vars to 0/NULL */
    user->type = NON_LOGGED;   
    memset(user->nick, 0, MAX_NICK_LEN+1);
@@ -2068,8 +1925,7 @@ int new_human_user(int sock)
      }
    
    /* Check if user is banned */
-   if(sock != admin_listening_socket) 
-     {	
+     {
 	banret = check_if_banned(user, BAN);
 	allowret = check_if_allowed(user);   
 	
@@ -2173,9 +2029,6 @@ int new_human_user(int sock)
    else if(sock == tls_listening_socket)
      logprintf(4, "New TLS connection on socket %d from user at %s\n", user->sock, user->hostname);
 #endif
-   else if(sock == admin_listening_socket)
-     logprintf(4, "New admin connection on socket %d from user at %s\n", user->sock, user->hostname);
-
    /* If it's a regular user (plain or TLS).  */
    if(sock == listening_socket
 #ifdef HAVE_SSL
@@ -2194,14 +2047,8 @@ int new_human_user(int sock)
 	     hub_mess(user, INIT_MESS);
 	  }
      }
-   else if(sock == admin_listening_socket)
-     {
-	user->type = NON_LOGGED_ADM;
-	hub_mess(user, INIT_ADMIN_MESS);
-     }   
-   
    if((count_users(UNKEYED | NON_LOGGED | REGULAR | REGISTERED | OP | OP_ADMIN
-		   | ADMIN | NON_LOGGED_ADM) >= users_per_fork)
+		   | ADMIN) >= users_per_fork)
       || (max_sockets <= count_users(0xFFFF)+10))
      {
 	set_listening_pid(0);	
@@ -2214,17 +2061,7 @@ int new_human_user(int sock)
 	     logerror(1, errno);
 	  }
 	
-	while(((erret =  close(admin_listening_socket)) != 0) && (errno == EINTR))
-	  logprintf(1, "Error - In new_human_user()/close(): Interrupted system call. Trying again.\n");	
-	
-	if(erret != 0)
-	  {	
-	     logprintf(1, "Error - In new_human_user()/close(): ");
-	     logerror(1, errno);
-	  }  
-	
 	listening_socket = -1;
-	admin_listening_socket = -1;
 #ifdef HAVE_SSL
 	if(tls_listening_socket != -1)
 	  {
@@ -2422,15 +2259,6 @@ void remove_human_user(struct user_t *user)
    remove_socket(user);
    
    
-#ifdef HAVE_PERL
-   if((user->type & (REGULAR | REGISTERED | OP | OP_ADMIN)) != 0)
-     {	
-	command_to_scripts("$Script user_disconnected %c%c", '\005', '\005');
-	non_format_to_scripts(user->nick);
-	command_to_scripts("|");
-     }   
-#endif 
-      
    /* And free the user.  */
    free(user);
       
@@ -2455,25 +2283,17 @@ void remove_user(struct user_t *our_user, int send_quit, int remove_from_list)
 	     send_to_humans(quit_string, REGULAR | REGISTERED | OP | OP_ADMIN,
 			    our_user);
 	     /* Send admin event for user quit */
-	     send_admin_event("$Event QUIT %s|", our_user->nick);
-	  }
-	else if((our_user->type == SCRIPT)
-		&& (strncmp(our_user->nick, "script process", 14) != 0))
-	   {
-	     snprintf(quit_string, sizeof(quit_string), "$Quit %s|", our_user->nick);
-	     send_to_non_humans(quit_string, FORKED, NULL);
-	     send_to_humans(quit_string, REGULAR | REGISTERED | OP | OP_ADMIN,
-			    our_user);
+	     json_event_user_quit(our_user->nick);
 	  }
      }
-   
+
    if((remove_from_list != 0)
-      && (our_user->type & (REGULAR | REGISTERED | OP | OP_ADMIN | SCRIPT)) 
+      && (our_user->type & (REGULAR | REGISTERED | OP | OP_ADMIN))
       != 0)
      remove_user_from_list(our_user->nick);
    
-   if((our_user->type & (UNKEYED | NON_LOGGED | REGULAR | REGISTERED | OP 
-			| OP_ADMIN | ADMIN | NON_LOGGED_ADM)) != 0)
+   if((our_user->type & (UNKEYED | NON_LOGGED | REGULAR | REGISTERED | OP
+			| OP_ADMIN | ADMIN)) != 0)
      remove_human_user(our_user);
    else
      remove_non_human(our_user);
@@ -2559,7 +2379,7 @@ int socket_action(struct user_t *user)
 	if(buf_len == 0)
 	  {
 	     /* If it was a human user.  */
-	     if((user->type & (SCRIPT | LINKED | FORKED)) == 0)
+	     if((user->type & (LINKED | FORKED)) == 0)
 	       {		       
 		  if((int)user->nick[0] > 0x20)
 		    logprintf(1, "%s from %s at socket %d hung up\n", user->nick, user->hostname, user->sock);
@@ -2572,7 +2392,7 @@ int socket_action(struct user_t *user)
 		  /* If the parent process disconnected, exit this process.  */
 		  if(pid <= 0)
 		    {
-		       if(count_users(SCRIPT | FORKED) == 1)
+		       if(count_users(FORKED) == 1)
 			 kill_forked_process();
 		    }
 
@@ -2588,7 +2408,7 @@ int socket_action(struct user_t *user)
 	  } 
 	else if(errno == ECONNRESET)
 	  {
-	     if((user->type & (SCRIPT | LINKED | FORKED)) == 0)
+	     if((user->type & (LINKED | FORKED)) == 0)
 	       {		  
 		  if((int)user->nick[0] > 0x20)
 		    logprintf(1, "%s from %s at socket %d hung up (Connection reset by peer)\n", user->nick, user->hostname, user->sock);
@@ -2602,7 +2422,7 @@ int socket_action(struct user_t *user)
 	  }
 	else if(errno == ETIMEDOUT)
 	  {
-	     if((user->type & (SCRIPT | LINKED | FORKED)) == 0)
+	     if((user->type & (LINKED | FORKED)) == 0)
 	       {		  
 		  if((int)user->nick[0] > 0x20)
 		    logprintf(1, "%s from %s at socket %d hung up (Connection timed out)\n", user->nick, user->hostname, user->sock);
@@ -2616,7 +2436,7 @@ int socket_action(struct user_t *user)
 	  }
 	else if(errno == EHOSTUNREACH)
 	  {
-	     if((user->type & (SCRIPT | LINKED | FORKED)) == 0)
+	     if((user->type & (LINKED | FORKED)) == 0)
 	       {		  
 		  if((int)user->nick[0] > 0x20)
 		    logprintf(1, "%s from %s at socket %d hung up (No route to host)\n", user->nick, user->hostname, user->sock);
@@ -2857,12 +2677,6 @@ int udp_action(void)
    logprintf(5, "Received udp packet from %s, port %d:\n%s\n",
 	       ip_str, ntohs(sin.sin_port), message);
    
-   /* Send event to scripts */
-#ifdef HAVE_PERL
-   command_to_scripts("$Script multi_hub_data_chunk_in %c%c", '\005', '\005');
-   non_format_to_scripts(message);
-#endif
-   
    return 1;
 }
   
@@ -2968,14 +2782,13 @@ int main(int argc, char *argv[])
    
    /* Init some variables */
    listening_socket = -1;
-   admin_listening_socket = -1;
    debug = 0;
    do_send_linked_hubs = 0;
    do_purge_user_list = 0;
    do_fork = 0;
    upload = 0;
    quit = 0;
-   script_reload = 0;
+   
    verbosity = 4;
    redir_on_min_share = 1;
    hub_full_mess = NULL;
@@ -3209,10 +3022,10 @@ int main(int argc, char *argv[])
 
 #ifdef HAVE_SSL
    /* Check for port conflicts */
-   if(tls_port != 0 && (tls_port == listening_port || tls_port == admin_port))
+   if(tls_port != 0 && tls_port == listening_port)
      {
-	printf("Error: tls_port %u conflicts with %s. Disabling TLS.\n",
-	       tls_port, tls_port == listening_port ? "listening_port" : "admin_port");
+	printf("Error: tls_port %u conflicts with listening_port. Disabling TLS.\n",
+	       tls_port);
 	tls_port = 0;
      }
 
@@ -3258,14 +3071,6 @@ int main(int argc, char *argv[])
    
    /* Tell user that hub is running */
    printf("Hub is up and running. Listening for user connections on port %u\n", listening_port);
-   if(admin_port != 0) {
-     printf("and listening for admin connections on ");
-     if(admin_localhost == 1) {
-       printf("localhost port %u\n", admin_port);
-     } else {
-       printf("port %u\n", admin_port);
-     }
-   }
 #ifdef HAVE_SSL
    if(tls_port != 0 && ssl_ctx != NULL)
      printf("and listening for TLS connections on port %u\n", tls_port);
@@ -3344,15 +3149,16 @@ int main(int argc, char *argv[])
 	return 1;
      }
 
-   /* Init perl scripts */
-#ifdef HAVE_PERL	
-   if(perl_init() == 0)
-     logprintf(1, "Error - Perl initialization failed.\n");
-   else if(pid <= 0)
-     sub_to_script("started_serving|");
-   
-#endif 
-   
+   /* Initialize JSON gateway socket (parent process only) */
+   if(pid > 0 && json_socket_enabled)
+     {
+	/* Default socket path if not configured */
+	if(json_socket_path[0] == '\0')
+	  snprintf(json_socket_path, MAX_JSON_SOCK_PATH, "%s/gateway.sock", config_dir);
+	if(json_socket_init() != 0)
+	  logprintf(1, "Warning - JSON socket initialization failed\n");
+     }
+
    /* Fork process which holds the listening sockets.  */
    if(pid > 0)
      fork_process();
@@ -3389,13 +3195,6 @@ int main(int argc, char *argv[])
 		  handle_alarm();
 		  do_alarm = 0;
 	       }
-#ifdef HAVE_PERL
-	     if(script_reload != 0)
-	       {
-		  perl_init();
-		  script_reload = 0;
-	       }
-#endif
 	  }
 	get_socket_action();
 	clear_user_list();
