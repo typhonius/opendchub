@@ -23,11 +23,11 @@ else
     exit 1
 fi
 
-# Test 2: Perl support
+# Test 2: Perl removed (v1.0.0+)
 if grep -q "#define HAVE_PERL" /build/opendchub/config.h; then
-    pass "Perl scripting support compiled in"
+    fail "Perl scripting still compiled in (should be removed)"
 else
-    fail "Perl scripting support NOT compiled in"
+    pass "Perl scripting removed (v1.0.0 architecture)"
 fi
 
 # Test 2b: SSL support
@@ -264,71 +264,25 @@ fi
 
 echo ""
 echo "========================================"
-echo "=== ODCHBot v4 Module Checks         ==="
+echo "=== Dragon Standalone Module Checks   ==="
 echo "========================================"
 
-# Test: Core v4 modules load without errors
-V4_LIB="/build/odchbot/lib"
+# Test: Dragon's standalone modules compile
+DRAGON_DIR="/build/odchbot"
 
-for module in ODCHBot::Core ODCHBot::Config ODCHBot::Database ODCHBot::EventBus ODCHBot::User ODCHBot::UserStore ODCHBot::Context ODCHBot::Formatter ODCHBot::CommandRegistry; do
-    if perl -I"$V4_LIB" -e "eval { require $module }; exit(\$@ ? 1 : 0)" 2>/dev/null; then
-        pass "Module $module loads"
+for module in NMDCClient GatewayClient; do
+    if perl -I"$DRAGON_DIR" -c "$DRAGON_DIR/$module.pm" 2>/dev/null; then
+        pass "Module $module.pm compiles"
     else
-        fail "Module $module has compile errors"
+        fail "Module $module.pm has compile errors"
     fi
 done
 
-# Test: Adapter modules load
-for module in ODCHBot::Adapter::NMDC ODCHBot::Adapter::Test; do
-    if perl -I"$V4_LIB" -e "eval { require $module }; exit(\$@ ? 1 : 0)" 2>/dev/null; then
-        pass "Module $module loads"
-    else
-        fail "Module $module has compile errors"
-    fi
-done
-
-# Test: Role modules load
-for module in ODCHBot::Role::Command ODCHBot::Role::Adapter; do
-    if perl -I"$V4_LIB" -e "eval { require $module }; exit(\$@ ? 1 : 0)" 2>/dev/null; then
-        pass "Module $module loads"
-    else
-        fail "Module $module has compile errors"
-    fi
-done
-
-# Test: All command modules compile
-CMD_PASS=0
-CMD_FAIL=0
-for pm in "$V4_LIB"/ODCHBot/Command/*.pm; do
-    name=$(basename "$pm" .pm)
-    if perl -I"$V4_LIB" -c "$pm" 2>/dev/null; then
-        CMD_PASS=$((CMD_PASS + 1))
-    else
-        CMD_FAIL=$((CMD_FAIL + 1))
-        echo "    WARNING: $name.pm failed compile check"
-    fi
-done
-if [ $CMD_FAIL -eq 0 ]; then
-    pass "All $CMD_PASS v4 command modules compile cleanly"
+# Test: dragon.pl compiles (syntax check only, won't connect)
+if perl -c "$DRAGON_DIR/dragon.pl" 2>/dev/null; then
+    pass "dragon.pl compiles"
 else
-    fail "$CMD_FAIL command modules have compile issues ($CMD_PASS OK)"
-fi
-
-echo ""
-echo "========================================"
-echo "=== ODCHBot v4 Unit Tests            ==="
-echo "========================================"
-
-# Run v4 unit tests with prove
-if [ -d /build/odchbot/t/v4 ]; then
-    cd /build/odchbot
-    if prove -I lib -I t/v4 t/v4/ 2>&1; then
-        pass "All v4 unit tests passed"
-    else
-        fail "v4 unit test suite had failures"
-    fi
-else
-    skip "No v4 unit test directory found"
+    fail "dragon.pl has compile errors"
 fi
 
 echo ""
@@ -455,11 +409,11 @@ if nc -z localhost 4111 2>/dev/null; then
         fail "Hub did not send \$Lock (got: $LOCK_RESPONSE)"
     fi
 
-    # Test: Admin port
+    # Test: Admin port removed (v1.0.0+)
     if nc -z localhost 53696 2>/dev/null; then
-        pass "Admin port 53696 listening"
+        fail "Admin port 53696 still listening (should be disabled)"
     else
-        fail "Admin port not listening"
+        pass "Admin port disabled (using JSON socket)"
     fi
 
     echo ""
@@ -507,19 +461,9 @@ if nc -z localhost 4111 2>/dev/null; then
     fi
     > /root/.opendchub/gaglist
 
-    # Check for bot startup in hub log or data
-    sleep 2
-    BOT_LOG="/root/.opendchub/logs/odchbot.log"
-    if [ -f "$BOT_LOG" ]; then
-        pass "ODCHBot log file created"
-        if grep -q "Dragon" "$BOT_LOG" 2>/dev/null; then
-            pass "ODCHBot v4 initialized (found in log)"
-        else
-            skip "ODCHBot may not have logged startup yet"
-        fi
-    else
-        skip "ODCHBot log file not found (bot may not have loaded)"
-    fi
+    # Dragon is a standalone NMDC client (not embedded), so no bot log check here.
+    # Dragon integration tests are separate.
+    pass "Hub started without embedded Perl (Dragon is standalone)"
 
     echo ""
     echo "========================================"
