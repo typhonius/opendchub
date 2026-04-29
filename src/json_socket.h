@@ -66,11 +66,16 @@ void json_event_myinfo(const char *nick, const char *description,
                        long long share);
 void json_event_kick(const char *nick, const char *by);
 void json_event_search(const char *nick, const char *query);
+void json_event_pm(const char *from_nick, const char *to_nick,
+                   const char *message);
 
 /* Send hub status as a JSON event (response to get_status command). */
 void json_send_status(void);
 
 /* Send user list as a JSON event (response to get_user_list command). */
 void json_send_user_list(void);
+
+/* Clean up all virtual users (called on gateway disconnect). */
+void json_cleanup_virtual_users(void);
 
 #endif /* JSON_SOCKET_H */

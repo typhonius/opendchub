@@ -618,7 +618,31 @@ void to_from(char *buf, struct user_t *user)
    
    /* And forward the message to specified user.  */
    if((to_user = get_human_user(tonick)) != NULL)
-     send_to_user(buf, to_user);
+     {
+	/* Virtual user: forward PM to gateway instead of sending over socket */
+	if(to_user->sock == -1)
+	  {
+	     char *pm_start = strstr(buf, "$<");
+	     if(pm_start != NULL)
+	       {
+		  char *msg_body = strchr(pm_start, '>');
+		  if(msg_body != NULL)
+		    {
+		       msg_body++;
+		       if(*msg_body == ' ') msg_body++;
+		       int msg_len = strlen(msg_body);
+		       if(msg_len > 0 && msg_body[msg_len - 1] == '|')
+			 msg_len--;
+		       char saved = msg_body[msg_len];
+		       msg_body[msg_len] = '\0';
+		       json_event_pm(user->nick, tonick, msg_body);
+		       msg_body[msg_len] = saved;
+		    }
+	       }
+	  }
+	else
+	  send_to_user(buf, to_user);
+     }
    else
      send_to_non_humans(buf, FORKED, user);
 }

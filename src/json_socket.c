@@ -36,6 +36,7 @@
 #include "commands.h"
 #include "fileio.h"
 #include "json_socket.h"
+#include "userlist.h"
 #include "cJSON.h"
 
 /* Configuration globals */
@@ -47,6 +48,11 @@ int  json_socket_enabled = 0;
 int  json_listen_sock = -1;
 int  json_client_sock = -1;
 int  json_client_authed = 0;
+
+/* Virtual user tracking — gateway-managed users with no real NMDC connection */
+#define MAX_VIRTUAL_USERS 16
+static struct user_t *virtual_users[MAX_VIRTUAL_USERS];
+static int virtual_user_count = 0;
 
 /* Receive buffer for partial reads */
 static char *recv_buf = NULL;
@@ -112,7 +118,7 @@ static void recv_buf_reset(void)
    recv_buf_cap = 0;
 }
 
-/* Disconnect the current JSON client. */
+/* Disconnect the current JSON client and clean up virtual users. */
 static void disconnect_client(void)
 {
    if (json_client_sock >= 0) {
@@ -121,6 +127,7 @@ static void disconnect_client(void)
    }
    json_client_authed = 0;
    recv_buf_reset();
+   json_cleanup_virtual_users();
    logprintf(1, "JSON socket: gateway client disconnected\n");
 }
 
@@ -313,6 +320,157 @@ static void handle_json_command(cJSON *root)
          remove_reg_user(nick->valuestring, NULL);
          logprintf(3, "JSON socket: unregistered user %s\n", nick->valuestring);
       }
+   }
+
+   /* Send a public chat message as a specific nick (virtual user) */
+   else if (strcmp(type, "send_chat_as") == 0) {
+      cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
+      cJSON *msg = cJSON_GetObjectItemCaseSensitive(root, "message");
+      if (cJSON_IsString(nick) && cJSON_IsString(msg)
+          && nick->valuestring != NULL && msg->valuestring != NULL) {
+         char *safe_nick = nmdc_sanitize(nick->valuestring);
+         char *safe_msg = nmdc_sanitize(msg->valuestring);
+         int buf_len = strlen(safe_nick) + strlen(safe_msg) + 8;
+         char *buf = malloc(buf_len);
+         if (buf != NULL) {
+            snprintf(buf, buf_len, "<%s> %s|", safe_nick, safe_msg);
+            send_to_humans(buf, REGULAR | REGISTERED | OP | OP_ADMIN, NULL);
+            send_to_non_humans(buf, FORKED, NULL);
+            free(buf);
+         }
+         json_event_chat(nick->valuestring, msg->valuestring);
+         free(safe_nick);
+         free(safe_msg);
+      }
+   }
+
+   /* Send a PM from a virtual user to a specific real user */
+   else if (strcmp(type, "send_pm_as") == 0) {
+      cJSON *from = cJSON_GetObjectItemCaseSensitive(root, "from");
+      cJSON *to = cJSON_GetObjectItemCaseSensitive(root, "to");
+      cJSON *msg = cJSON_GetObjectItemCaseSensitive(root, "message");
+      if (cJSON_IsString(from) && cJSON_IsString(to) && cJSON_IsString(msg)
+          && from->valuestring != NULL && to->valuestring != NULL
+          && msg->valuestring != NULL) {
+         struct user_t *user = get_human_user(to->valuestring);
+         if (user != NULL && user->sock >= 0) {
+            char *safe_msg = nmdc_sanitize(msg->valuestring);
+            int buf_len = strlen(from->valuestring) * 2
+                        + strlen(to->valuestring) + strlen(safe_msg) + 32;
+            char *buf = malloc(buf_len);
+            if (buf != NULL) {
+               snprintf(buf, buf_len,
+                  "$To: %s From: %s $<%s> %s|",
+                  to->valuestring, from->valuestring,
+                  from->valuestring, safe_msg);
+               send_to_user(buf, user);
+               free(buf);
+            }
+            free(safe_msg);
+         }
+      }
+   }
+
+   /* Add a virtual user (gateway-managed, no real NMDC connection) */
+   else if (strcmp(type, "add_virtual_user") == 0) {
+      cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
+      if (!cJSON_IsString(nick) || nick->valuestring == NULL)
+         return;
+
+      if (virtual_user_count >= MAX_VIRTUAL_USERS) {
+         logprintf(1, "JSON socket: virtual user limit reached (%d)\n",
+                   MAX_VIRTUAL_USERS);
+         return;
+      }
+      if (get_human_user(nick->valuestring) != NULL) {
+         logprintf(2, "JSON socket: nick '%s' already in use\n",
+                   nick->valuestring);
+         return;
+      }
+
+      cJSON *desc_obj  = cJSON_GetObjectItemCaseSensitive(root, "description");
+      cJSON *email_obj = cJSON_GetObjectItemCaseSensitive(root, "email");
+      cJSON *tag_obj   = cJSON_GetObjectItemCaseSensitive(root, "tag");
+      cJSON *share_obj = cJSON_GetObjectItemCaseSensitive(root, "share");
+      cJSON *op_obj    = cJSON_GetObjectItemCaseSensitive(root, "op");
+
+      struct user_t *vuser = calloc(1, sizeof(struct user_t));
+      if (vuser == NULL) return;
+
+      vuser->sock = -1;
+      strncpy(vuser->nick, nick->valuestring, MAX_NICK_LEN);
+      vuser->nick[MAX_NICK_LEN] = '\0';
+      strncpy(vuser->hostname, "gateway", MAX_HOST_LEN);
+
+      const char *desc_str  = (cJSON_IsString(desc_obj)  && desc_obj->valuestring)
+                              ? desc_obj->valuestring : "";
+      const char *email_str = (cJSON_IsString(email_obj) && email_obj->valuestring)
+                              ? email_obj->valuestring : "";
+      const char *tag_str   = (cJSON_IsString(tag_obj)   && tag_obj->valuestring)
+                              ? tag_obj->valuestring : "<gateway V:1.0.0>";
+
+      vuser->desc  = strdup(desc_str);
+      vuser->email = strdup(email_str);
+      vuser->share = cJSON_IsNumber(share_obj)
+                     ? (long long)share_obj->valuedouble : 0;
+      vuser->con_type = 8; /* LAN(T1) */
+      vuser->type = cJSON_IsTrue(op_obj) ? OP : REGULAR;
+      vuser->flag = 1;
+
+      /* Add to hash table (PM routing) and shared memory (NickList) */
+      add_human_to_hash(vuser);
+      add_user_to_list(vuser);
+
+      /* Track in our virtual user list */
+      virtual_users[virtual_user_count++] = vuser;
+
+      /* Broadcast join to all connected clients */
+      char buf[512];
+      snprintf(buf, sizeof(buf), "$Hello %s|", vuser->nick);
+      send_to_humans(buf, REGULAR | REGISTERED | OP | OP_ADMIN, NULL);
+
+      snprintf(buf, sizeof(buf),
+         "$MyINFO $ALL %s %s%s$ $LAN(T1)\x01$%s$%lld$|",
+         vuser->nick, desc_str, tag_str, email_str, vuser->share);
+      send_to_humans(buf, REGULAR | REGISTERED | OP | OP_ADMIN, NULL);
+
+      logprintf(1, "JSON socket: added virtual user '%s'\n", vuser->nick);
+   }
+
+   /* Remove a virtual user */
+   else if (strcmp(type, "remove_virtual_user") == 0) {
+      cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
+      if (!cJSON_IsString(nick) || nick->valuestring == NULL)
+         return;
+
+      int i;
+      for (i = 0; i < virtual_user_count; i++) {
+         if (strcmp(virtual_users[i]->nick, nick->valuestring) == 0)
+            break;
+      }
+      if (i >= virtual_user_count) return;
+
+      struct user_t *vuser = virtual_users[i];
+
+      /* Broadcast quit */
+      char buf[MAX_NICK_LEN + 16];
+      snprintf(buf, sizeof(buf), "$Quit %s|", vuser->nick);
+      send_to_humans(buf, REGULAR | REGISTERED | OP | OP_ADMIN, NULL);
+      json_event_user_quit(vuser->nick);
+
+      /* Remove from hub data structures */
+      remove_user_from_list(vuser->nick);
+      remove_human_from_hash(vuser->nick);
+
+      /* Free and compact array */
+      if (vuser->desc)  free(vuser->desc);
+      if (vuser->email) free(vuser->email);
+      free(vuser);
+      virtual_users[i] = virtual_users[--virtual_user_count];
+      virtual_users[virtual_user_count] = NULL;
+
+      logprintf(1, "JSON socket: removed virtual user '%s'\n",
+                nick->valuestring);
    }
 
    else {
@@ -624,6 +782,49 @@ void json_event_search(const char *nick, const char *query)
    cJSON_Delete(root);
 }
 
+void json_event_pm(const char *from_nick, const char *to_nick,
+                   const char *message)
+{
+   if (json_client_sock < 0 || !json_client_authed)
+      return;
+
+   cJSON *root = cJSON_CreateObject();
+   cJSON_AddStringToObject(root, "type", "pm");
+   cJSON_AddStringToObject(root, "from", from_nick ? from_nick : "");
+   cJSON_AddStringToObject(root, "to", to_nick ? to_nick : "");
+   cJSON_AddStringToObject(root, "message", message ? message : "");
+   cJSON_AddNumberToObject(root, "ts", (double)time(NULL));
+
+   char *str = cJSON_PrintUnformatted(root);
+   if (str != NULL) {
+      json_send_event(str);
+      free(str);
+   }
+   cJSON_Delete(root);
+}
+
+void json_cleanup_virtual_users(void)
+{
+   int i;
+   for (i = 0; i < virtual_user_count; i++) {
+      struct user_t *vuser = virtual_users[i];
+      if (vuser == NULL) continue;
+
+      char buf[MAX_NICK_LEN + 16];
+      snprintf(buf, sizeof(buf), "$Quit %s|", vuser->nick);
+      send_to_humans(buf, REGULAR | REGISTERED | OP | OP_ADMIN, NULL);
+
+      remove_user_from_list(vuser->nick);
+      remove_human_from_hash(vuser->nick);
+
+      if (vuser->desc)  free(vuser->desc);
+      if (vuser->email) free(vuser->email);
+      free(vuser);
+      virtual_users[i] = NULL;
+   }
+   virtual_user_count = 0;
+}
+
 void json_send_status(void)
 {
    if (json_client_sock < 0 || !json_client_authed)
@@ -719,6 +920,36 @@ void json_send_user_list(void)
          cJSON_AddItemToArray(users_arr, entry);
       }
       human = human->next;
+   }
+
+   /* Include virtual users */
+   {
+      int vi;
+      for (vi = 0; vi < virtual_user_count; vi++) {
+         struct user_t *u = virtual_users[vi];
+         if (u == NULL) continue;
+
+         cJSON *entry = cJSON_CreateObject();
+         cJSON_AddStringToObject(entry, "nick", u->nick);
+         cJSON_AddStringToObject(entry, "ip", "127.0.0.1");
+         cJSON_AddNumberToObject(entry, "share", (double)u->share);
+
+         const char *type_str = "REGULAR";
+         if (u->type & OP_ADMIN) type_str = "OP_ADMIN";
+         else if (u->type & OP) type_str = "OP";
+         else if (u->type & REGISTERED) type_str = "REGISTERED";
+         cJSON_AddStringToObject(entry, "type", type_str);
+
+         cJSON_AddStringToObject(entry, "description",
+                                 u->desc ? u->desc : "");
+         cJSON_AddStringToObject(entry, "email",
+                                 u->email ? u->email : "");
+         cJSON_AddStringToObject(entry, "speed", "LAN(T1)");
+         cJSON_AddBoolToObject(entry, "tls", 0);
+         cJSON_AddBoolToObject(entry, "virtual", 1);
+
+         cJSON_AddItemToArray(users_arr, entry);
+      }
    }
 
    char *str = cJSON_PrintUnformatted(root);

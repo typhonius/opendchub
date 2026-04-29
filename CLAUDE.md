@@ -18,16 +18,28 @@ Dependencies: build-essential, autoconf, automake, libcrypt-dev, libssl-dev.
 - `src/main.c` — Main loop, fork model, signal handling
 - `src/commands.c` — NMDC command handlers (chat, kick, MyINFO, validate_nick)
 - `src/network.c` — Poll loop, socket management, send_to_humans/send_to_user
-- `src/json_socket.c` — Unix domain socket IPC with gateway (JSON protocol)
+- `src/json_socket.c` — Unix domain socket IPC with gateway (JSON protocol), virtual user management
 - `src/cJSON.c` — Vendored JSON parser
 
 ## Architecture
 
-The hub accepts NMDC client connections and forwards all events to the gateway via a Unix domain socket speaking length-prefixed JSON. The gateway decides everything: bans, gags, registration, moderation.
+The hub accepts NMDC client connections and forwards all events to the gateway via a Unix domain socket speaking length-prefixed JSON. The gateway decides everything: bans, gags, registration, moderation. The gateway also registers virtual users (ODCHBot, OPChat) that appear in the hub's user list without real NMDC connections.
 
 ```
 DC Clients ←→ opendchub ←→ gateway (Unix socket, JSON)
+                              ↕
+                     virtual users (Dragon, OPChat)
 ```
+
+### JSON socket commands (gateway → hub)
+
+Core: `kick`, `ban`, `unban`, `gag`, `ungag`, `send_all`, `send_to`, `get_status`, `get_user_list`, `register_user`, `unregister_user`
+
+Virtual users: `add_virtual_user`, `remove_virtual_user`, `send_chat_as`, `send_pm_as`
+
+### JSON socket events (hub → gateway)
+
+`chat`, `user_join`, `user_quit`, `myinfo`, `kick`, `search`, `pm` (PMs to virtual users)
 
 The hub does NOT:
 - Check bans, gags, or passwords (gateway handles this)

@@ -1140,6 +1140,10 @@ void send_to_user(char *buf, struct user_t *user)
    register char *send_buf;
    char port_str[6];
 
+   /* Virtual users have no socket — silently drop */
+   if(user->sock == -1)
+     return;
+
    memset(&myhost, 0, sizeof(struct sockaddr_in));
    memset(&linked_hub, 0, sizeof(struct sockaddr_in));
 
