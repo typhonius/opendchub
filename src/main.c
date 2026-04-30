@@ -29,6 +29,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #if HAVE_UNISTD_H
 # include <unistd.h>
@@ -1803,6 +1804,15 @@ int new_human_user(int sock)
 	close(user->sock);
 	free(user);
 	return -1;
+     }
+
+   /* Disable Nagle — send small messages immediately instead of
+    * buffering for up to 40ms. DC chat is lots of small writes. */
+   if(setsockopt(user->sock, IPPROTO_TCP, TCP_NODELAY, &yes,
+		 sizeof(int)) == -1)
+     {
+	logprintf(1, "Error - In new_human_user()/set_sock_opt(TCP_NODELAY): ");
+	logerror(1, errno);
      }
    
    if((flags = fcntl(user->sock, F_GETFL, 0)) < 0)
