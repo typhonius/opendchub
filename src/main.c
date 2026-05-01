@@ -830,7 +830,7 @@ void hub_mess(struct user_t *user, int mess_type)
      {
 	/* If a user just connected */
       case INIT_MESS:
-	if((send_string = malloc(sizeof(char) * 110)) == NULL)
+	if((send_string = malloc(sizeof(char) * 512)) == NULL)
 	  {
 	     logprintf(1, "Error - In hub_mess()/malloc(): ");
 	     logerror(1, errno);
@@ -839,10 +839,10 @@ void hub_mess(struct user_t *user, int mess_type)
 	  }
 
 	if (json_hub_topic[0] != '\0')
-	  snprintf(send_string, 110, "$HubName %s - %s|", hub_name, json_hub_topic);
+	  snprintf(send_string, 512, "$HubName %s - %s|", hub_name, json_hub_topic);
 	else
-	  snprintf(send_string, 110, "$HubName %s|", hub_name);
-	sprintfa(send_string, 110, "<Hub-Security> This hub is running version %s of Open DC Hub.|", VERSION);
+	  snprintf(send_string, 512, "$HubName %s|", hub_name);
+	sprintfa(send_string, 512, "<Hub-Security> This hub is running version %s of Open DC Hub.|", VERSION);
 	break;
 	
 	/* If the hub is full, tell user */
