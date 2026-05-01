@@ -49,6 +49,9 @@ int  json_listen_sock = -1;
 int  json_client_sock = -1;
 int  json_client_authed = 0;
 
+/* Hub topic (set via gateway, appended to hub_name for $HubName display) */
+char json_hub_topic[256] = "";
+
 /* Virtual user tracking — gateway-managed users with no real NMDC connection */
 #define MAX_VIRTUAL_USERS 16
 static struct user_t *virtual_users[MAX_VIRTUAL_USERS];
@@ -368,6 +371,31 @@ static void handle_json_command(cJSON *root)
             }
             free(safe_msg);
          }
+      }
+   }
+
+   /* Set the hub topic. Stored separately from hub_name.
+    * Broadcasts "$HubName hub_name - topic" to all clients.
+    * New clients also see it because we update the display name. */
+   else if (strcmp(type, "set_topic") == 0) {
+      cJSON *topic = cJSON_GetObjectItemCaseSensitive(root, "topic");
+      if (cJSON_IsString(topic) && topic->valuestring != NULL) {
+         /* Store the topic */
+         strncpy(json_hub_topic, topic->valuestring, sizeof(json_hub_topic) - 1);
+         json_hub_topic[sizeof(json_hub_topic) - 1] = '\0';
+         /* Build display: "Chaotic Neutral - Welcome back" */
+         char display[256];
+         if (topic->valuestring[0] == '\0') {
+            snprintf(display, sizeof(display), "%s", hub_name);
+         } else {
+            snprintf(display, sizeof(display), "%s - %s",
+                     hub_name, topic->valuestring);
+         }
+         /* Broadcast to all connected clients */
+         char buf[280];
+         snprintf(buf, sizeof(buf), "$HubName %s|", display);
+         send_to_humans(buf, REGULAR | REGISTERED | OP | OP_ADMIN, NULL);
+         logprintf(3, "JSON socket: topic set to '%s'\n", topic->valuestring);
       }
    }
 

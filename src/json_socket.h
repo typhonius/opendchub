@@ -34,6 +34,9 @@ extern int  json_client_sock;
 /* Whether the connected client has authenticated */
 extern int  json_client_authed;
 
+/* Hub topic (set via gateway, appended to hub_name for display) */
+extern char json_hub_topic[256];
+
 /* Initialize the JSON socket listener. Creates the Unix domain socket
  * at the configured path. Returns 0 on success, -1 on failure.
  * Should be called from the parent process only. */
