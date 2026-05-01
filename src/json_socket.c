@@ -51,8 +51,6 @@ int  json_client_authed = 0;
 
 /* Hub topic (set via gateway, appended to hub_name for $HubName display) */
 char json_hub_topic[256] = "";
-/* Short hub name for topic display (e.g. "ODCH" instead of "Chaotic Neutral") */
-char json_hub_short_name[MAX_HUB_NAME+1] = "";
 
 /* Virtual user tracking — gateway-managed users with no real NMDC connection */
 #define MAX_VIRTUAL_USERS 16
@@ -385,21 +383,13 @@ static void handle_json_command(cJSON *root)
          /* Store the topic */
          strncpy(json_hub_topic, topic->valuestring, sizeof(json_hub_topic) - 1);
          json_hub_topic[sizeof(json_hub_topic) - 1] = '\0';
-         /* Optionally set the short name */
-         cJSON *short_name = cJSON_GetObjectItemCaseSensitive(root, "short_name");
-         if (cJSON_IsString(short_name) && short_name->valuestring != NULL) {
-            strncpy(json_hub_short_name, short_name->valuestring, MAX_HUB_NAME);
-            json_hub_short_name[MAX_HUB_NAME] = '\0';
-         }
-         /* Build display: "ODCH - Welcome back" */
-         const char *display_name = json_hub_short_name[0]
-                                    ? json_hub_short_name : hub_name;
+         /* Build display: "Chaotic Neutral - Welcome back" */
          char display[256];
          if (topic->valuestring[0] == '\0') {
             snprintf(display, sizeof(display), "%s", hub_name);
          } else {
             snprintf(display, sizeof(display), "%s - %s",
-                     display_name, topic->valuestring);
+                     hub_name, topic->valuestring);
          }
          /* Broadcast to all connected clients */
          char buf[280];

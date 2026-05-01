@@ -36,8 +36,6 @@ extern int  json_client_authed;
 
 /* Hub topic (set via gateway, appended to hub_name for display) */
 extern char json_hub_topic[256];
-/* Short hub name for topic display (e.g. "ODCH") */
-extern char json_hub_short_name[];
 
 /* Initialize the JSON socket listener. Creates the Unix domain socket
  * at the configured path. Returns 0 on success, -1 on failure.
