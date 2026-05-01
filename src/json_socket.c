@@ -436,10 +436,34 @@ static void handle_json_command(cJSON *root)
                    MAX_VIRTUAL_USERS);
          return;
       }
-      if (get_human_user(nick->valuestring) != NULL) {
-         logprintf(2, "JSON socket: nick '%s' already in use\n",
-                   nick->valuestring);
-         return;
+      {
+         struct user_t *existing = get_human_user(nick->valuestring);
+         if (existing != NULL) {
+            if (existing->sock == -1) {
+               /* Virtual user already exists — this is a re-registration
+                * (e.g. bot was killed and restarted). Remove the old one
+                * so we can create a fresh entry. */
+               int vi;
+               for (vi = 0; vi < virtual_user_count; vi++) {
+                  if (virtual_users[vi] == existing) {
+                     remove_user_from_list(existing->nick);
+                     remove_human_from_hash(existing->nick);
+                     if (existing->desc) free(existing->desc);
+                     if (existing->email) free(existing->email);
+                     free(existing);
+                     virtual_users[vi] = virtual_users[--virtual_user_count];
+                     virtual_users[virtual_user_count] = NULL;
+                     break;
+                  }
+               }
+               logprintf(2, "JSON socket: replaced existing virtual user '%s'\n",
+                         nick->valuestring);
+            } else {
+               logprintf(2, "JSON socket: nick '%s' already in use by a real user\n",
+                         nick->valuestring);
+               return;
+            }
+         }
       }
 
       cJSON *desc_obj  = cJSON_GetObjectItemCaseSensitive(root, "description");
