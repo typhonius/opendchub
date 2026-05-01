@@ -1345,6 +1345,25 @@ static void log_ssl_errors(const char *context)
 }
 
 /* Initialize the SSL context with certificate and key */
+/* ALPN callback — DC++ clients advertise "nmdc" during TLS handshake */
+static int alpn_select_cb(SSL *ssl, const unsigned char **out,
+   unsigned char *outlen, const unsigned char *in,
+   unsigned int inlen, void *arg)
+{
+   (void)ssl; (void)arg;
+   const unsigned char *p = in;
+   while (p < in + inlen) {
+      unsigned char len = *p++;
+      if (len == 4 && p + 4 <= in + inlen && memcmp(p, "nmdc", 4) == 0) {
+         *out = p;
+         *outlen = 4;
+         return SSL_TLSEXT_ERR_OK;
+      }
+      p += len;
+   }
+   return SSL_TLSEXT_ERR_NOACK;
+}
+
 int init_ssl_ctx(void)
 {
    ssl_ctx = SSL_CTX_new(TLS_server_method());
@@ -1371,6 +1390,10 @@ int init_ssl_ctx(void)
 
    /* Disable session cache (each connection gets a fresh session) */
    SSL_CTX_set_session_cache_mode(ssl_ctx, SSL_SESS_CACHE_OFF);
+
+   /* ALPN — DC++ clients advertise "nmdc" protocol during TLS handshake.
+    * We must select it or the handshake fails on strict clients. */
+   SSL_CTX_set_alpn_select_cb(ssl_ctx, alpn_select_cb, NULL);
 
    /* Load certificate chain (leaf + intermediates from fullchain.pem) */
    if(SSL_CTX_use_certificate_chain_file(ssl_ctx, tls_cert_file) <= 0)
