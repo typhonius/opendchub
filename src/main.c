@@ -1826,7 +1826,12 @@ int new_human_user(int sock)
 	close(user->sock);
 	free(user);
 	return -1;
-     }   
+     }
+
+   /* Disable Nagle — send small messages immediately. Without this,
+    * the INIT_MESS gets stuck behind Nagle + delayed ACK interaction
+    * on non-localhost connections. */
+   setsockopt(user->sock, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(int));
    
    /* Set users ip */
    user->ip = client.sin_addr.s_addr;
