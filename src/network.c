@@ -1372,8 +1372,8 @@ int init_ssl_ctx(void)
    /* Disable session cache (each connection gets a fresh session) */
    SSL_CTX_set_session_cache_mode(ssl_ctx, SSL_SESS_CACHE_OFF);
 
-   /* Load certificate */
-   if(SSL_CTX_use_certificate_file(ssl_ctx, tls_cert_file, SSL_FILETYPE_PEM) <= 0)
+   /* Load certificate chain (leaf + intermediates from fullchain.pem) */
+   if(SSL_CTX_use_certificate_chain_file(ssl_ctx, tls_cert_file) <= 0)
      {
 	logprintf(1, "Error - init_ssl_ctx(): Failed to load certificate from %s\n", tls_cert_file);
 	log_ssl_errors("load_cert");
