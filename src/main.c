@@ -839,7 +839,7 @@ void hub_mess(struct user_t *user, int mess_type)
 	  }
 
 	if (json_hub_topic[0] != '\0')
-	  snprintf(send_string, 512, "$HubName %s - %s|", hub_name, json_hub_topic);
+	  snprintf(send_string, 512, "$HubName %s - %s|", json_hub_short_name[0] ? json_hub_short_name : hub_name, json_hub_topic);
 	else
 	  snprintf(send_string, 512, "$HubName %s|", hub_name);
 	sprintfa(send_string, 512, "<Hub-Security> This hub is running version %s of Open DC Hub.|", VERSION);
