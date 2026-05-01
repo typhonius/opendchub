@@ -565,6 +565,13 @@ int json_socket_init(void)
    struct sockaddr_un addr;
    int flags;
 
+   /* Default topic from hub_description */
+   extern char hub_description[];
+   if (hub_description[0] != '\0' && json_hub_topic[0] == '\0') {
+      strncpy(json_hub_topic, hub_description, sizeof(json_hub_topic) - 1);
+      json_hub_topic[sizeof(json_hub_topic) - 1] = '\0';
+   }
+
    if (!json_socket_enabled || json_socket_path[0] == '\0')
       return 0;
 
