@@ -32,8 +32,7 @@
  * frequently.  */
 #define BYTE char
 
-#define ALARM_TIME         900             /* Seconds between alarm calls */
-#define SSL_HANDSHAKE_TIMEOUT 30            /* Max seconds for TLS handshake */ 
+#define SSL_HANDSHAKE_TIMEOUT 30            /* Max seconds for TLS handshake */
 #define MAX_NICK_LEN       50              /* Maximum length of nickname, 20 is max in win client */
 #define MAX_HOST_LEN       121             /* Maximum length of hostname */
 #define MAX_VERSION_LEN    30              /* Maximum length of version name */
@@ -48,13 +47,8 @@
 
 #define CONFIG_FILE        "config"        /* Name of config file */
 #define MOTD_FILE          "motd"          /* Name of file containing the motd */
-#define GAG_FILE           "gaglist"       /* Name of file with gagged users in */
-#define BAN_FILE           "banlist"       /* Name of file with banlist */
-#define NICKBAN_FILE       "nickbanlist"   /* Name of file with nick banlist */
-#define ALLOW_FILE         "allowlist"     /* Name of file with allowlist */
 #define REG_FILE           "reglist"       /* Name of file with list of registered users */
 #define LINK_FILE          "linklist"      /* Name of file with list of linked hubs */
-#define OP_PERM_FILE       "op_permlist"   /* Name of file with op permissions */
 #define LOG_FILE           "log"           /* Name of log file */
 #define UN_SOCK_NAME       "odch"          /* Name of unix socket file */
 #define USER_LIST          "odchlist"      /* Name of temporary user list file */
@@ -63,7 +57,6 @@
 #define INIT_MESS          1
 #define HELLO_MESS         2 
 #define HUB_FULL_MESS      3
-#define BAN_MESS           4
 #define GET_PASS_MESS      5
 #define LOGGED_IN_MESS     6
 #define OP_LOGGED_IN_MESS  7
@@ -81,25 +74,8 @@
 #define FORKED             0x80
 #define LINKED             0x100
 
-/* The different OP permissions */
-#define BAN_ALLOW          0x1
-#define USER_INFO          0x2
-#define MASSMESSAGE        0x4
-#define USER_ADMIN         0x8
-
 #define PRIV               0
 #define TO_ALL             1
-
-#define ALLOW              0
-#define BAN                1
-#define REG                2
-#define CONFIG             3
-#define LINK               4
-#define NICKBAN            5
-#define GAG                6
-
-#define HOST               0
-#define IP                 1
 
 #ifndef HAVE_STRTOLL
 # ifdef HAVE_STRTOQ
@@ -119,8 +95,7 @@ struct user_t
    long unsigned ip;                  /* Ip address of user */ 
    char hostname[MAX_HOST_LEN+1];     /* Hostname of user */
    int  type;                         /* Type of user, types defined above. */
-   int  gag;                          /* If the user is gagged or not */
-   char nick[MAX_NICK_LEN+1];         /* Nickname of user */ 
+   char nick[MAX_NICK_LEN+1];         /* Nickname of user */
    char version[MAX_VERSION_LEN+1];   /* Version of client */ 
    char *email;                       /* Email of user, optional */ 
    char *desc;                        /* Description of users files, optional */ 
@@ -207,7 +182,6 @@ extern volatile sig_atomic_t   do_write;
 extern volatile sig_atomic_t   do_send_linked_hubs;
 extern volatile sig_atomic_t   do_purge_user_list;
 extern volatile sig_atomic_t   do_fork;
-extern volatile sig_atomic_t   do_alarm;
 extern char   config_dir[MAX_FDP_LEN+1];
 extern char   un_sock_path[MAX_FDP_LEN+1];
 extern char   logfile[MAX_FDP_LEN+1];

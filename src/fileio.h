@@ -18,21 +18,10 @@
 
 
 int read_config(void);
-int check_banlist(void);
-int check_if_banned(struct user_t *user, int type);
-int check_if_allowed(struct user_t *user);
 int check_if_registered(char *user_nick);
-int check_pass(char *buf, struct user_t *user);
 int get_permissions(char *user_nick);
 int write_config_file(void);
 int set_lock(int fd, int type);
-void create_banlist(void);
-void create_gaglist(void);
-void create_nickbanlist(void);
-void create_allowlist(void);
-void create_reglist(void);
-void create_op_permlist(void);
-void create_linklist(void);
 int add_reg_user(char *buf, struct user_t *user);
 int remove_reg_user(char *buf, struct user_t *user);
 int add_linked_hub(char *buf);
@@ -47,7 +36,4 @@ int add_line_to_file(char *line, char *file);
 int remove_line_from_file(char *line, char *file, int port);
 int my_scandir(char *dirname, char *namelist[]);
 int remove_exp_from_file(time_t now_time, char *file);
-int add_perm(char *buf, struct user_t *user);
-int remove_perm(char *buf, struct user_t *user);
 int check_if_on_linklist(char *ip, int port);
-int check_if_gagged(struct user_t *user);

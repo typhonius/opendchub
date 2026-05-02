@@ -1,5 +1,5 @@
 /*  Open DC Hub - A Linux/Unix version of the Direct Connect hub.
- *  Copyright (C) 2002,2003  Jonatan Nilsson 
+ *  Copyright (C) 2002,2003  Jonatan Nilsson
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,17 +32,6 @@ int    my_pass(char *buf, struct user_t *user);
 void   kick(char *buf, struct user_t *user, int tempban);
 void   forward_to_clients(char *buf, struct user_t *user);
 void   quit_program(void);
-void   set_var(char *buf, struct user_t *user);
-int    ballow(char *buf, int type, struct user_t *user);
-int    unballow(char *buf, int type);
-void   op_force_move(char *buf, struct user_t *user);
-void   redirect_all(char *buf, struct user_t *user);
-void   up_cmd(char *buf, int port);
 void   multi_search(char *buf, struct user_t *user);
 void   multi_connect_to_me(char *buf, struct user_t *user);
-void   get_host(char *buf, struct user_t *user, int type);
-void   send_commands(struct user_t *user);
-void   send_mass_message(char *buf, struct user_t *user);
-void   remove_expired(void);
-int    show_perms(struct user_t *user, char *buf);
 void   disc_user(char *buf, struct user_t *user);

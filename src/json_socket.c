@@ -49,9 +49,6 @@ int  json_listen_sock = -1;
 int  json_client_sock = -1;
 int  json_client_authed = 0;
 
-/* Hub topic (set via gateway, appended to hub_name for $HubName display) */
-char json_hub_topic[256] = "";
-
 /* Virtual user tracking — gateway-managed users with no real NMDC connection */
 #define MAX_VIRTUAL_USERS 16
 static struct user_t *virtual_users[MAX_VIRTUAL_USERS];
@@ -197,56 +194,6 @@ static void handle_json_command(cJSON *root)
       }
    }
 
-   /* Ban entry — uses ballow(buf, BAN, NULL) which adds to banlist */
-   else if (strcmp(type, "ban") == 0) {
-      cJSON *entry = cJSON_GetObjectItemCaseSensitive(root, "entry");
-      if (cJSON_IsString(entry) && entry->valuestring != NULL) {
-         char cmd[512];
-         snprintf(cmd, sizeof(cmd), "%s", entry->valuestring);
-         ballow(cmd, BAN, NULL);
-         logprintf(3, "JSON socket: added ban entry %s\n", entry->valuestring);
-      }
-   }
-
-   /* Unban — uses unballow(buf, BAN) */
-   else if (strcmp(type, "unban") == 0) {
-      cJSON *entry = cJSON_GetObjectItemCaseSensitive(root, "entry");
-      if (cJSON_IsString(entry) && entry->valuestring != NULL) {
-         char cmd[512];
-         snprintf(cmd, sizeof(cmd), "%s", entry->valuestring);
-         unballow(cmd, BAN);
-         logprintf(3, "JSON socket: removed ban entry %s\n", entry->valuestring);
-      }
-   }
-
-   /* Gag user — uses ballow(buf, GAG, NULL) */
-   else if (strcmp(type, "gag") == 0) {
-      cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
-      if (cJSON_IsString(nick) && nick->valuestring != NULL) {
-         char cmd[256];
-         snprintf(cmd, sizeof(cmd), "%s", nick->valuestring);
-         ballow(cmd, GAG, NULL);
-         struct user_t *user = get_human_user(nick->valuestring);
-         if (user != NULL)
-            user->gag = 1;
-         logprintf(3, "JSON socket: gagged %s\n", nick->valuestring);
-      }
-   }
-
-   /* Ungag user */
-   else if (strcmp(type, "ungag") == 0) {
-      cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
-      if (cJSON_IsString(nick) && nick->valuestring != NULL) {
-         char cmd[256];
-         snprintf(cmd, sizeof(cmd), "%s", nick->valuestring);
-         unballow(cmd, GAG);
-         struct user_t *user = get_human_user(nick->valuestring);
-         if (user != NULL)
-            user->gag = 0;
-         logprintf(3, "JSON socket: ungagged %s\n", nick->valuestring);
-      }
-   }
-
    /* Send message to all human users */
    else if (strcmp(type, "send_all") == 0) {
       cJSON *msg = cJSON_GetObjectItemCaseSensitive(root, "message");
@@ -294,6 +241,24 @@ static void handle_json_command(cJSON *root)
    /* Get user list */
    else if (strcmp(type, "get_user_list") == 0) {
       json_send_user_list();
+   }
+
+   /* Purge stale connections — remove users stuck in NMDC handshake.
+    * Called periodically by the gateway's maintenance tick. */
+   else if (strcmp(type, "purge_stale") == 0) {
+      struct sock_t *human_user = human_sock_list;
+      int purged = 0;
+      while (human_user != NULL) {
+         if ((human_user->user->type & (UNKEYED | NON_LOGGED)) != 0) {
+            logprintf(2, "Purging stale connection at %s\n",
+                      human_user->user->hostname);
+            human_user->user->rem = REMOVE_USER | SEND_QUIT | REMOVE_FROM_LIST;
+            purged++;
+         }
+         human_user = human_user->next;
+      }
+      if (purged > 0)
+         logprintf(3, "JSON socket: purged %d stale connection(s)\n", purged);
    }
 
    /* Register a user in the hub reglist.
@@ -374,31 +339,6 @@ static void handle_json_command(cJSON *root)
       }
    }
 
-   /* Set the hub topic. Stored separately from hub_name.
-    * Broadcasts "$HubName hub_name - topic" to all clients.
-    * New clients also see it because we update the display name. */
-   else if (strcmp(type, "set_topic") == 0) {
-      cJSON *topic = cJSON_GetObjectItemCaseSensitive(root, "topic");
-      if (cJSON_IsString(topic) && topic->valuestring != NULL) {
-         /* Store the topic */
-         strncpy(json_hub_topic, topic->valuestring, sizeof(json_hub_topic) - 1);
-         json_hub_topic[sizeof(json_hub_topic) - 1] = '\0';
-         /* Build display: "Chaotic Neutral - Welcome back" */
-         char display[256];
-         if (topic->valuestring[0] == '\0') {
-            snprintf(display, sizeof(display), "%s", hub_name);
-         } else {
-            snprintf(display, sizeof(display), "%s - %s",
-                     hub_name, topic->valuestring);
-         }
-         /* Broadcast to all connected clients */
-         char buf[280];
-         snprintf(buf, sizeof(buf), "$HubName %s|", display);
-         send_to_humans(buf, REGULAR | REGISTERED | OP | OP_ADMIN, NULL);
-         logprintf(3, "JSON socket: topic set to '%s'\n", topic->valuestring);
-      }
-   }
-
    /* Send a chat-style message from a nick to a specific user only (not a PM,
     * appears in their main chat window). This is PUBLIC_SINGLE in v3 terms. */
    else if (strcmp(type, "send_to_as") == 0) {
@@ -421,6 +361,32 @@ static void handle_json_command(cJSON *root)
             }
             free(safe_nick);
             free(safe_msg);
+         }
+      }
+   }
+
+   /* Send a raw NMDC string to all human users verbatim.
+    * No sanitization — the "data" field is the exact protocol bytes to send.
+    * Used by the gateway to echo chat messages and send protocol commands. */
+   else if (strcmp(type, "send_raw") == 0) {
+      cJSON *data = cJSON_GetObjectItemCaseSensitive(root, "data");
+      if (cJSON_IsString(data) && data->valuestring != NULL) {
+         send_to_humans(data->valuestring, REGULAR | REGISTERED | OP | OP_ADMIN, NULL);
+         send_to_non_humans(data->valuestring, FORKED, NULL);
+      }
+   }
+
+   /* Send a raw NMDC string to a specific user verbatim.
+    * No sanitization — the "data" field is the exact protocol bytes to send.
+    * Used by the gateway to send greetings, topic, gag notifications, etc. */
+   else if (strcmp(type, "send_raw_to") == 0) {
+      cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
+      cJSON *data = cJSON_GetObjectItemCaseSensitive(root, "data");
+      if (cJSON_IsString(nick) && cJSON_IsString(data)
+          && nick->valuestring != NULL && data->valuestring != NULL) {
+         struct user_t *user = get_human_user(nick->valuestring);
+         if (user != NULL) {
+            send_to_user(data->valuestring, user);
          }
       }
    }
@@ -564,13 +530,6 @@ int json_socket_init(void)
 {
    struct sockaddr_un addr;
    int flags;
-
-   /* Default topic from hub_description */
-   extern char hub_description[];
-   if (hub_description[0] != '\0' && json_hub_topic[0] == '\0') {
-      strncpy(json_hub_topic, hub_description, sizeof(json_hub_topic) - 1);
-      json_hub_topic[sizeof(json_hub_topic) - 1] = '\0';
-   }
 
    if (!json_socket_enabled || json_socket_path[0] == '\0')
       return 0;

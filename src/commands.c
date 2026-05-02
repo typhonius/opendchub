@@ -430,19 +430,9 @@ void chat(char *buf, struct user_t *user)
 	  }
      }
 
-   /* Check if user is gagged */
-   if(user->gag == 1)
-     {
-	uprintf(user, "<Hub-Security> You are gagged. No talking for you.|");
-	return;
-     }
-
-   /* Broadcast to all users and forward to child processes */
-   send_to_non_humans(buf, FORKED, user);
-   send_to_humans(buf, REGULAR | REGISTERED | OP | OP_ADMIN, NULL);
-
-   /* Send JSON event for gateway.
-    * Parse "<nick> message|" into nick and message. */
+   /* Forward to gateway for decision (gag check, broadcast, storage).
+    * The gateway will echo back via send_raw if the message should be broadcast.
+    * Parse "<nick> message|" into nick and message for the JSON event. */
    {
       char json_nick[MAX_NICK_LEN+1];
       const char *msg_start;
@@ -1282,12 +1272,6 @@ void kick(char *buf, struct user_t *user, int tempban)
 	  uprintf(user, "\r\nUser %s was kicked\r\n", nick);
 	remove_user_from_list(nick);
 
-	if((kick_bantime > 0) && (tempban != 0))
-	  {
-	     snprintf(ban_command, sizeof(ban_command), "%s %dm", host, kick_bantime);
-	     ballow(ban_command, BAN, user);
-	  }
-	
 	/* Send event for kick */
 	json_event_kick(nick, user->nick);
      }
@@ -1357,58 +1341,3 @@ int secure_strcmp(const char *a, const char *b)
    return result;
 }
 
-/* Stub -- gateway handles config changes */
-void set_var(char *org_buf, struct user_t *user)
-{ (void)org_buf; (void)user; }
-
-/* Stub -- gateway handles bans/allows */
-int ballow(char *buf, int type, struct user_t *user)
-{ (void)buf; (void)type; (void)user; return 0; }
-
-/* Stub -- gateway handles bans/allows */
-int unballow(char *buf, int type)
-{ (void)buf; (void)type; return 0; }
-
-/* Stub -- gateway handles list display */
-void send_user_list(int type, struct user_t *user)
-{ (void)type; (void)user; }
-
-/* Stub -- gateway handles redirects */
-void op_force_move(char *buf, struct user_t *user)
-{ (void)buf; (void)user; }
-
-/* Stub -- gateway handles redirects */
-void redirect_all(char *buf, struct user_t *user)
-{ (void)buf; (void)user; }
-
-/* Stub -- hub linking removed */
-void up_cmd(char *buf, int port)
-{ (void)buf; (void)port; }
-
-/* Stub -- gateway handles host lookups */
-void get_host(char *buf, struct user_t *user, int type)
-{ (void)buf; (void)user; (void)type; }
-
-/* Stub -- gateway handles command listing */
-void send_commands(struct user_t *user)
-{ (void)user; }
-
-/* Stub -- gateway handles mass messages */
-void send_mass_message(char *buffy, struct user_t *user)
-{ (void)buffy; (void)user; }
-
-/* Stub -- gateway handles ban expiry */
-void remove_expired(void)
-{ }
-
-/* Stub -- gateway handles gag */
-int gag_user(char *buf, struct user_t *user)
-{ (void)buf; (void)user; return 0; }
-
-/* Stub -- gateway handles ungag */
-int ungag_user(char *buf, struct user_t *user)
-{ (void)buf; (void)user; return 0; }
-
-/* Stub -- gateway handles permissions */
-int show_perms(struct user_t *user, char *buf)
-{ (void)user; (void)buf; return 0; }

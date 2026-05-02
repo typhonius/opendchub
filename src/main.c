@@ -119,7 +119,6 @@ volatile sig_atomic_t   do_write = 0;
 volatile sig_atomic_t   do_send_linked_hubs = 0;
 volatile sig_atomic_t   do_purge_user_list = 0;
 volatile sig_atomic_t   do_fork = 0;
-volatile sig_atomic_t   do_alarm = 0;
 char   config_dir[MAX_FDP_LEN+1] = {0};
 char   un_sock_path[MAX_FDP_LEN+1] = {0};
 char   logfile[MAX_FDP_LEN+1] = {0};
@@ -349,9 +348,6 @@ void fork_process(void)
 	     logprintf(1, "Error - In fork_process()/close(): ");
 	     logerror(1, errno);
 	  }
-	
-	/* Set the alarm */
-	alarm(ALARM_TIME);
 	
 	/* And remove all connections to forked process. We only want 
 	 * connections between parent and child, not between children. Also
@@ -621,75 +617,6 @@ void sighup_signal(int z)
    do_reload_conf = 1;
 }
 
-/* SIGALRM handler — only sets a flag.  All actual work is done in the
- * main loop via handle_alarm() to avoid calling non-async-signal-safe
- * functions (malloc, logprintf, list traversal) from a signal context. */
-void alarm_signal(int z)
-{
-   do_alarm = 1;
-   alarm(ALARM_TIME);
-}
-
-/* Called from the main loop when do_alarm flag is set. */
-void handle_alarm(void)
-{
-   struct user_t *non_human;
-   struct sock_t *human_user;
-
-   if((debug != 0) && (pid > 0))
-     logprintf(2, "Alarm timer fired\n");
-
-   /* Check timeouts */
-   non_human = non_human_user_list;
-   while(non_human != NULL)
-     {
-	if((non_human->timeout == 0) && (non_human->type == LINKED))
-	  {
-	     logprintf(2, "Linked hub at %s, port %d is offline\n", non_human->hostname, non_human->key);
-	     non_human->rem = REMOVE_USER;
-	  }
-	non_human = non_human->next;
-     }
-
-   human_user = human_sock_list;
-   while(human_user != NULL)
-     {
-	if((human_user->user->type &
-	    (UNKEYED | NON_LOGGED)) != 0)
-	  {
-	     logprintf(2, "Timeout for non logged in user at %s, removing user\n", human_user->user->hostname);
-	     human_user->user->rem = REMOVE_USER | SEND_QUIT | REMOVE_FROM_LIST;
-	  }
-	human_user = human_user->next;
-     }
-
-   /* And reset all timeout values */
-   non_human = non_human_user_list;
-   while(non_human != NULL)
-     {
-	if(non_human->type == LINKED)
-	  non_human->timeout = 0;
-	non_human = non_human->next;
-     }
-
-   /* And make clear for upload to public hub list */
-   if(pid > 0)
-     {
-	if(hublist_upload != 0)
-	  upload = 1;
-	do_write = 1;
-	do_send_linked_hubs = 1;
-	do_purge_user_list = 1;
-     }
-   else
-     {
-	upload = 0;
-	do_write = 0;
-	do_purge_user_list = 0;
-     }
-
-   remove_expired();
-}
 
 void init_sig(void)
 {  
@@ -718,11 +645,6 @@ void init_sig(void)
    sigaction(SIGTERM, &sv, NULL);
    sigaction(SIGINT, &sv, NULL);
    
-   sv.sa_handler = alarm_signal;
-
-   /* And set handler for the alarm call.  */
-   sigaction(SIGALRM, &sv, NULL);
-
    sv.sa_handler = sighup_signal;
 
    /* Reload configuration on SIGHUP.  */
@@ -838,11 +760,7 @@ void hub_mess(struct user_t *user, int mess_type)
 	     return;
 	  }
 
-	if (json_hub_topic[0] != '\0')
-	  snprintf(send_string, 512, "$HubName %s - %s|", hub_name, json_hub_topic);
-	else
-	  snprintf(send_string, 512, "$HubName %s|", hub_name);
-	sprintfa(send_string, 512, "<Hub-Security> This hub is running version %s of Open DC Hub.|", VERSION);
+	snprintf(send_string, 512, "$HubName %s|", hub_name);
 	break;
 	
 	/* If the hub is full, tell user */
@@ -857,18 +775,6 @@ void hub_mess(struct user_t *user, int mess_type)
 	  }
 	snprintf(send_string, 15 + strlen(hub_full_mess) + 3, "<Hub-Security> %s|",
 		 hub_full_mess);
-	break;
-	
-      case BAN_MESS:
-	if((send_string = malloc(sizeof(char) * 50)) == NULL)
-	  {
-	     logprintf(1, "Error - In hub_mess()/malloc(): ");
-	     logerror(1, errno);
-	     quit = 1;
-	     return;
-	  }
-	
-	snprintf(send_string, 50, "<Hub-Security> Your IP or Hostname is banned|");
 	break;
 	
       case GET_PASS_MESS:
@@ -1129,17 +1035,6 @@ int handle_command(char *buf, struct user_t *user)
 		    logprintf(2, "%s tried to kick without having priviledges\n", user->nick);
 	       }
 	     
-	     /* The OpForceMove command */
-	     else if(strncmp(temp, "$OpForceMove ", 13) == 0)
-	       {
-		  if((user->type & (OP | OP_ADMIN | ADMIN | FORKED)) != 0)
-		    {
-		       op_force_move(temp, user);
-		    }
-		  else
-		    logprintf(2, "%s tried to redirect without having priviledges\n", user->nick);
-	       }
-	     
 	     /* The chat command, starts with <nick> */
 	     else if(*temp == '<')
 	       {
@@ -1212,12 +1107,6 @@ int handle_command(char *buf, struct user_t *user)
 		  disc_user(temp, user);
 	       }	     	     	    	     
 	     	     	     
-	     else if((strncasecmp(temp, "$ForceMove ", 11) == 0)
-		     && (user->type == FORKED))
-	       {		  
-		  redirect_all(temp + 11, user);
-	       }	     
-	     
 	     else if((strncasecmp(temp, "$QuitProgram", 12) == 0)
 		     && ((user->type == FORKED) || (user->type == ADMIN)))
 	       {
@@ -1236,155 +1125,6 @@ int handle_command(char *buf, struct user_t *user)
 		    }
 	       }
 	     
-	     else if((strncasecmp(temp, "$RedirectAll ", 13) == 0) && (user->type == ADMIN))
-	       {
-		  uprintf(user, "\r\nRedirecting all users...\r\n");
-		  logprintf(1, "Admin at %s redirected all users\n", user->hostname);
-		  redirect_all(temp+13, user);
-	       }
-	     
-	     else if(strncasecmp(temp, "$Set ", 5) == 0)
-	       {
-		  if((user->type & (FORKED | ADMIN)) != 0)
-		    set_var(temp, user);
-	       }
-	     
-	     else if(strncasecmp(temp, "$Ban ", 5) == 0)
-	       {
-		  if((user->type & ADMIN) != 0)
-		    {
-		       ret = ballow(temp+5, BAN, user);
-		       if(user->type == ADMIN)
-			 {			    
-			    if(ret == -1)
-			      {
-				 send_to_user("\r\nCouldn't add entry to ban list\r\n", user);
-				 logprintf(4, "Error - Failed adding entry to ban list\n");
-			      }
-			    else if(ret == 0)
-			      {
-				 send_to_user("\r\nEntry is already on the list\r\n", user);
-			      }
-			    else
-			      {
-				 send_to_user("\r\nAdded entry to ban list\r\n", user);
-				 sscanf(temp+5, "%120[^|]", tempstr);
-				 logprintf(3, "Admin at %s added %s to banlist\n", user->hostname, tempstr);
-			      }
-			 }		       
-		    }	 
-	       }
-	     else if(strncasecmp(temp, "$Allow ", 7) == 0)
-	       {
-		  if((user->type & ADMIN) != 0)
-		    {
-		       ret = ballow(temp+7, ALLOW, user);
-		       if(user->type == ADMIN)
-			 {			    
-			    if(ret == -1)
-			      {
-				 send_to_user("\r\nCouldn't add entry to allow list\r\n", user);
-				 logprintf(4, "Error - Failed adding entry to allow list\n");
-			      }
-			    else if(ret == 0)
-			      {
-				 send_to_user("\r\nEntry is already on the list\r\n", user);
-			      }
-			    else
-			      {
-				 send_to_user("\r\nAdded entry to allow list\r\n", user);
-				 sscanf(temp+7, "%120[^|]", tempstr);
-				 logprintf(3, "Admin at %s added %s to allow list\n", user->hostname, tempstr);
-			      }
-			 }		       
-		    }	 
-	       }
-	     else if(strncasecmp(temp, "$Unban ", 7) == 0)
-	       {
-		  if((user->type & ADMIN) != 0)
-		    {
-		       ret = unballow(temp+7, BAN);
-		       if(user->type == ADMIN)
-			 {			    
-			    if(ret == -1)
-			      {
-				 send_to_user("\r\nCouldn't remove entry from ban list\r\n", user);
-				 logprintf(1, "Error - Failed removing entry from ban list\n");
-			      }
-			    else if(ret == 0)
-			      {
-				 send_to_user("\r\nEntry wasn't found in list\r\n", user);
-			      }
-			    else
-			      {
-				 send_to_user("\r\nRemoved entry from ban list\r\n", user);
-				 sscanf(temp+7, "%120[^|]", tempstr);
-				 logprintf(3, "Admin at %s removed %s from ban list\n", user->hostname, tempstr);
-			      }
-			 }	 
-		    }		  
-	       }
-	     else if(strncasecmp(temp, "$Unallow ", 9) == 0)
-	       {
-		  if((user->type & ADMIN) != 0)
-		    {
-		       ret = unballow(temp+9, ALLOW);
-		       if(user->type == ADMIN)
-			 {			    
-			    if(ret == -1)
-			      {
-				 send_to_user("\r\nCouldn't remove entry from allow list\r\n", user);
-				 logprintf(1, "Error - Failed removing entry from allow list\n");
-			      }
-			    else if(ret == 0)
-			      {
-				 send_to_user("\r\nEntry wasn't found in list\r\n", user);
-			      }
-			    else
-			      {
-				 send_to_user("\r\nRemoved entry from allow list\r\n", user);
-				 sscanf(temp+9, "%120[^|]", tempstr);
-				 logprintf(3, "Admin at %s removed %s from allow list\n", user->hostname, tempstr);
-			      }
-			 }	 
-		    }		  
-	       }
-	     else if(strncasecmp(temp, "$GetBanList", 11) == 0)
-	       {
-		  if(user->type == ADMIN)
-		    {
-		       uprintf(user, "\r\n");
-		       send_user_list(BAN, user);
-		       uprintf(user, "\r\n");
-		    }
-	       }
-	     else if(strncasecmp(temp, "$GetAllowList", 13) == 0)
-	       {
-		  if(user->type == ADMIN)
-		    {
-		       uprintf(user, "\r\n");
-		       send_user_list(ALLOW, user);
-		       uprintf(user, "\r\n");
-		    }
-	       }
-	     else if(strncasecmp(temp, "$GetRegList", 11) == 0)
-	       {
-		  if(user->type == ADMIN)
-		    {
-		       uprintf(user, "\r\n");
-		       send_user_list(REG, user);
-		       uprintf(user, "\r\n");
-		    }
-	       }
-	     else if(strncasecmp(temp, "$GetConfig", 10) == 0)
-	       {
-		  if(user->type == ADMIN)
-		    {
-		       uprintf(user, "\r\n");
-		       send_user_list(CONFIG, user);
-		       uprintf(user, "\r\n");
-		    }
-	       }
 	     else if(strncasecmp(temp, "$GetMotd", 8) == 0)
 	       {
 		  if(user->type == ADMIN)
@@ -1392,15 +1132,6 @@ int handle_command(char *buf, struct user_t *user)
 		       uprintf(user, "\r\n");
 		       send_motd(user);
 		       send_to_user("\r\n", user);
-		    }
-	       }
-	     else if(strncasecmp(temp, "$GetLinkList", 12) == 0)
-	       {
-		  if(user->type == ADMIN)
-		    {
-		       uprintf(user, "\r\n");
-		       send_user_list(LINK, user);
-		       uprintf(user, "\r\n");
 		    }
 	       }
 	     else if(strncasecmp(temp, "$GetStatus", 10) == 0)
@@ -1550,195 +1281,6 @@ int handle_command(char *buf, struct user_t *user)
 		  if((user->type & (FORKED | REGULAR | REGISTERED | OP | OP_ADMIN)) != 0)
 		    multi_connect_to_me(temp, user);
 	       }
-	     else if(strncasecmp(temp, "$GetHost ", 9) == 0)
-	       {
-		  if(user->type == ADMIN)
-		    get_host(temp, user, HOST);
-	       }	     
-	     else if(strncasecmp(temp, "$GetIP ", 7) == 0)
-	       {
-		  if(user->type == ADMIN)
-		    get_host(temp, user, IP);
-	       }	     
-	     else if(strncasecmp(temp, "$Commands", 9) == 0)
-	       {
-		  if(user->type == ADMIN)
-		    send_commands(user);
-	       }
-	     else if(strncasecmp(temp, "$MassMessage ", 13) == 0)
-	       {
-		  if(user->type == ADMIN)
-		    {
-		       uprintf(user, "\r\nSent Mass Message\r\n");
-		       send_mass_message(temp + 13, user);
-		    }		  
-	       }
-	     else if(strncasecmp(temp, "$AddPerm ", 9) == 0)
-	       {
-		  if((user->type & (ADMIN | FORKED)) != 0)
-		    {
-		       ret = add_perm(temp, user);
-		       if(user->type == ADMIN)
-			 {
-			    if(ret == -1)
-			      uprintf(user, "\r\nCouldn't add permission to user\r\n");
-			    else if(ret == 2)
-			      uprintf(user, "\r\nBad format for $AaddPerm. Correct format is:\r\n$AddPerm <nick> <permission>|\r\nand permission is one of: BAN_ALLOW, USER_INFO, MASSMESSAGE, USER_ADMIN\r\n");
-			    else if(ret == 3)
-			      uprintf(user, "\r\nUser already has that permission.\r\n");
-			    else if(ret == 4)
-			      uprintf(user, "\r\nUser is not an operator.\r\n");
-			    else
-			      {
-				 uprintf(user, "\r\nAdded permission to user.\r\n");
-				 logprintf(3, "Administrator at %s added permission to user\n", user->hostname);
-			      }		       
-			 }		  
-		    }		  
-	       }
-	     else if(strncasecmp(temp, "$RemovePerm ", 12) == 0)
-	       {
-		  if((user->type & (ADMIN | FORKED)) != 0)
-		    {
-		       ret = remove_perm(temp, user);
-		       if(user->type == ADMIN)
-			 {
-			    if(ret == -1)
-			      uprintf(user, "\r\nCouldn't remove permission from user.\r\n");
-			    else if(ret == 2)
-			      uprintf(user, "\r\nBad format for $RemovePerm. Correct format is:\r\n$RemovePerm <nick> <permission>|\r\nand permission is one of: BAN_ALLOW, USER_INFO, MASSMESSAGE, USER_ADMIN\r\n");
-			    else if(ret == 3)
-			      uprintf(user, "\r\nUser does not have that permission.\r\n");
-			    else if(ret == 4)
-			      uprintf(user, "\r\nUser is not an operator.\r\n");
-			    else
-			      {
-				 uprintf(user, "\r\nRemoved permission from user.\r\n");
-				 logprintf(3, "Administrator at %s removed permission from user\n", user->hostname);
-			      }		       
-			 }		  
-		    }		  
-	       }
-	     else if(strncasecmp(temp, "$ShowPerms ", 11) == 0)
-	       {
-		  if(user->type == ADMIN)
-		    {
-		       if((ret = show_perms(user, temp)) == 2)
-			 uprintf(user, "\r\nBad format for $ShowPerms. Correct format is:\r\n$ShowPerms <nick>|");
-		       else if(ret == 3)
-			 uprintf(user, "\r\nUser is not an operator.\r\n");		       
-		    }		  
-	       }
-	     else if(strncasecmp(temp, "$Gag ", 5) == 0)
-	       {
-		  if((user->type & ADMIN) != 0)
-		    {
-		       ret = ballow(temp+5, GAG, user);
-		       if(user->type == ADMIN)
-			 {
-			    if(ret == -1)
-			      {
-				 uprintf(user, "\r\nCouldn't add entry to gag list\r\n");
-				 logprintf(4, "Error - Failed adding entry to gag list\n");
-			      }
-			    else if(ret == 2)
-			      uprintf(user, "\r\nEntry is already on the list\r\n");
-			    else
-			      {
-				 uprintf(user, "\r\nAdded entry to gag list\r\n");
-				 sscanf(temp+9, "%120[^|]", tempstr);
-				 logprintf(3, "Administrator at %s added %s to gag list\n", user->hostname, tempstr);
-			      }
-			 }
-		    }
-	       }
-	     else if(strncasecmp(temp, "$GetGagList", 11) == 0)
-	       {
-		  if(user->type == ADMIN)
-		    {
-		       uprintf(user, "\r\nGag list:\r\n");
-		       send_user_list(GAG, user);
-		       uprintf(user, "\r\n");
-		    }
-	       }
-	     else if(strncasecmp(temp, "$UnGag ", 7) == 0)
-	       {
-		  if((user->type & ADMIN) != 0)
-		    {
-		       ret = unballow(temp+7, GAG);
-		       if(user->type == ADMIN)
-			   {
-			    if(ret == -1)
-			      {
-				 uprintf(user, "\r\nCouldn't remove entry from nickban list\r\n");
-				 logprintf(4, "Error - Failed adding entry to nickban list\n");
-			      }
-			    else if(ret == 2)
-			      uprintf(user, "\r\nEntry wasn't found in list\r\n");
-			    else
-			      {
-				 uprintf(user, "\r\nRemoved entry from nickban list\r\n");
-				 sscanf(temp+9, "%120[^|]", tempstr);
-				 logprintf(3, "Administrator at %s removed %s from nickban list\n", user->hostname, tempstr);
-			      }
-			 }
-		    }
-	       }
-	     else if(strncasecmp(temp, "$NickBan ", 9) == 0)
-	       {
-		  if((user->type & ADMIN) != 0)
-		    {
-		       ret = ballow(temp+9, NICKBAN, user);
-		       if(user->type == ADMIN)
-			 {		       
-			    if(ret == -1)
-			      {			      
-				 uprintf(user, "\r\nCouldn't add entry to nickban list\r\n");
-				 logprintf(4, "Error - Failed adding entry to nickban list\n");
-			      }		  
-			    else if(ret == 2)
-			      uprintf(user, "\r\nEntry is already on the list\r\n");
-			    else
-			      {			      
-				 uprintf(user, "\r\nAdded entry to nickban list\r\n");
-				 sscanf(temp+9, "%120[^|]", tempstr);
-				 logprintf(3, "Administrator at %s added %s to nickban list\n", user->hostname, tempstr);
-			      }		  
-			 }	
-		    }		     
-	       }
-	     else if(strncasecmp(temp, "$GetNickBanList", 15) == 0)
-	       {
-		  if(user->type == ADMIN)
-		    {		       
-		       uprintf(user, "\r\nNickban list:\r\n");
-		       send_user_list(NICKBAN, user);
-		       uprintf(user, "\r\n");
-		    }
-	       }
-	     else if(strncasecmp(temp, "$UnNickBan ", 11) == 0)
-	       {
-		  if((user->type & ADMIN) != 0)
-		    {
-		       ret = unballow(temp+11, NICKBAN);
-		       if(user->type == ADMIN)
-			 {		       
-			    if(ret == -1)
-			      {			      
-				 uprintf(user, "\r\nCouldn't remove entry from nickban list\r\n");
-				 logprintf(4, "Error - Failed adding entry to nickban list\n");
-			      }		  
-			    else if(ret == 2)
-			      uprintf(user, "\r\nEntry wasn't found in list\r\n");
-			    else
-			      {			      
-				 uprintf(user, "\r\nRemoved entry from nickban list\r\n");
-				 sscanf(temp+9, "%120[^|]", tempstr);
-				 logprintf(3, "Administrator at %s removed %s from nickban list\n", user->hostname, tempstr);
-			      }		  
-			 }		      	
-		    }
-	       }	     	     
 	     else if(strncasecmp(temp, "$DataToAll ", 11) == 0)
 	       {
 		  if((user->type & (ADMIN | FORKED)) != 0)
@@ -1936,8 +1478,7 @@ int new_human_user(int sock)
    /* Ban/allow/gag checks removed — gateway handles all moderation.
     * Gateway receives user_join event and kicks if banned.
     * Gateway receives chat event and suppresses if gagged. */
-   user->gag = 0;
-           
+
    /* Add sock struct of the user.  */
    add_socket(user);
    
@@ -2588,9 +2129,6 @@ int udp_action(void)
 	user_list = user_list->next;
      }	
    
-   if((strncmp(message, "$Up ", 4) == 0) || (strncmp(message, "$UpToo ", 7) == 0))
-     up_cmd(message, ntohs(sin.sin_port));
-   
    inet_ntop(AF_INET, &sin.sin_addr, ip_str, sizeof(ip_str));
    logprintf(5, "Received udp packet from %s, port %d:\n%s\n",
 	       ip_str, ntohs(sin.sin_port), message);
@@ -3055,12 +2593,6 @@ int main(int argc, char *argv[])
 	
    init_sig();
 
-   /* Send initial alarm */
-   if((kill(pid, SIGALRM)) < 0)
-     {
-	return 1;
-     }
-
    /* Fork process which holds the listening sockets.  */
    if(pid > 0)
      fork_process();
@@ -3102,11 +2634,6 @@ int main(int argc, char *argv[])
 	       {
 		  purge_user_list();
 		  do_purge_user_list = 0;
-	       }
-	     if(do_alarm != 0)
-	       {
-		  handle_alarm();
-		  do_alarm = 0;
 	       }
 	  }
 	get_socket_action();
