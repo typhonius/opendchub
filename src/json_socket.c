@@ -285,7 +285,11 @@ static void handle_json_command(cJSON *root)
       }
    }
 
-   /* Send a public chat message as a specific nick (virtual user) */
+   /* Send a public chat message as a specific nick (virtual user).
+    * Does NOT emit json_event_chat — the gateway already knows about this
+    * message (it originated the command) and will publish it to its own
+    * event bus.  Emitting it here would cause the gateway to echo it back
+    * via send_raw, resulting in duplicate messages. */
    else if (strcmp(type, "send_chat_as") == 0) {
       cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
       cJSON *msg = cJSON_GetObjectItemCaseSensitive(root, "message");
@@ -301,7 +305,6 @@ static void handle_json_command(cJSON *root)
             send_to_non_humans(buf, FORKED, NULL);
             free(buf);
          }
-         json_event_chat(nick->valuestring, msg->valuestring);
          free(safe_nick);
          free(safe_msg);
       }
