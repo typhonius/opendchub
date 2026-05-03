@@ -1092,7 +1092,7 @@ int my_info(char *org_buf, struct user_t *user)
 		     user->email ? user->email : "",
 		     user->share);
 
-   if((new_user != 0) && (user->type == REGULAR))
+   if((new_user != 0) && (user->type & (REGULAR | REGISTERED | OP | OP_ADMIN)))
      add_human_to_hash(user);
    
    /* Add user to user list */
