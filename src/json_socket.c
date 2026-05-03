@@ -368,7 +368,6 @@ static void handle_json_command(cJSON *root)
          }
          free(safe_nick);
          free(safe_msg);
-         }
       }
    }
 
