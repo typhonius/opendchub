@@ -513,67 +513,91 @@ static void handle_json_command(cJSON *root)
    }
 
    /* Gateway tells hub to challenge user for password */
-   /* Gateway auth responses — relay to all processes via internal commands.
-    * The user may be in a child process, so we can't use get_human_user
-    * directly (it only finds users local to this process).  Instead, send
-    * internal NMDC commands that each process handles. */
+   /* Gateway auth responses.
+    * The user may not be in the hash table yet (they haven't sent $MyINFO).
+    * Search the human_sock_list directly to find NON_LOGGED users by nick.
+    * Also relay to children via send_to_non_humans in case the user is in
+    * a different process. */
    else if (strcmp(type, "send_getpass") == 0) {
-      cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
-      if (cJSON_IsString(nick) && nick->valuestring != NULL) {
-         char buf[MAX_NICK_LEN + 20];
-         snprintf(buf, sizeof(buf), "$GwGetPass %s|", nick->valuestring);
-         /* Try local first, then relay to children */
-         struct user_t *user = get_human_user(nick->valuestring);
-         if (user != NULL && user->type == NON_LOGGED) {
-            uprintf(user, "<Hub-Security> Your nickname is registered, please supply a password.|$GetPass|");
-         } else {
+      cJSON *nick_obj = cJSON_GetObjectItemCaseSensitive(root, "nick");
+      if (cJSON_IsString(nick_obj) && nick_obj->valuestring != NULL) {
+         const char *n = nick_obj->valuestring;
+         int found = 0;
+         struct sock_t *hu = human_sock_list;
+         while (hu != NULL) {
+            if (hu->user->type == NON_LOGGED
+                && strncasecmp(hu->user->nick, n, MAX_NICK_LEN) == 0
+                && strlen(hu->user->nick) == strlen(n)) {
+               uprintf(hu->user, "<Hub-Security> Your nickname is registered, please supply a password.|$GetPass|");
+               found = 1;
+               break;
+            }
+            hu = hu->next;
+         }
+         if (!found) {
+            char buf[MAX_NICK_LEN + 20];
+            snprintf(buf, sizeof(buf), "$GwGetPass %s|", n);
             send_to_non_humans(buf, FORKED, NULL);
          }
       }
    }
 
    else if (strcmp(type, "login_user") == 0) {
-      cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
+      cJSON *nick_obj = cJSON_GetObjectItemCaseSensitive(root, "nick");
       cJSON *perm = cJSON_GetObjectItemCaseSensitive(root, "permission");
-      if (cJSON_IsString(nick) && nick->valuestring != NULL) {
+      if (cJSON_IsString(nick_obj) && nick_obj->valuestring != NULL) {
+         const char *n = nick_obj->valuestring;
          int permission = cJSON_IsNumber(perm) ? perm->valueint : 0;
-         struct user_t *user = get_human_user(nick->valuestring);
-         if (user != NULL && user->type == NON_LOGGED) {
-            /* Local user — handle directly */
-            if (permission >= 3) user->type = OP_ADMIN;
-            else if (permission >= 2) user->type = OP;
-            else if (permission >= 1) user->type = REGISTERED;
-            hub_mess(user, HELLO_MESS);
-            if (permission >= 2) hub_mess(user, OP_LOGGED_IN_MESS);
-            logprintf(3, "JSON socket: login_user %s (permission=%d)\n",
-                      nick->valuestring, permission);
-         } else {
-            /* Relay to children */
+         int found = 0;
+         struct sock_t *hu = human_sock_list;
+         while (hu != NULL) {
+            if (hu->user->type == NON_LOGGED
+                && strncasecmp(hu->user->nick, n, MAX_NICK_LEN) == 0
+                && strlen(hu->user->nick) == strlen(n)) {
+               if (permission >= 3) hu->user->type = OP_ADMIN;
+               else if (permission >= 2) hu->user->type = OP;
+               else if (permission >= 1) hu->user->type = REGISTERED;
+               hub_mess(hu->user, HELLO_MESS);
+               if (permission >= 2) hub_mess(hu->user, OP_LOGGED_IN_MESS);
+               logprintf(3, "JSON socket: login_user %s (permission=%d)\n", n, permission);
+               found = 1;
+               break;
+            }
+            hu = hu->next;
+         }
+         if (!found) {
             char buf[MAX_NICK_LEN + 30];
-            snprintf(buf, sizeof(buf), "$GwLoginUser %s %d|",
-                     nick->valuestring, permission);
+            snprintf(buf, sizeof(buf), "$GwLoginUser %s %d|", n, permission);
             send_to_non_humans(buf, FORKED, NULL);
          }
       }
    }
 
    else if (strcmp(type, "reject_user") == 0) {
-      cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
+      cJSON *nick_obj = cJSON_GetObjectItemCaseSensitive(root, "nick");
       cJSON *reason = cJSON_GetObjectItemCaseSensitive(root, "reason");
-      if (cJSON_IsString(nick) && nick->valuestring != NULL) {
-         struct user_t *user = get_human_user(nick->valuestring);
-         if (user != NULL) {
-            if (cJSON_IsString(reason) && reason->valuestring != NULL)
-               uprintf(user, "<Hub-Security> %s|", reason->valuestring);
-            hub_mess(user, BAD_PASS_MESS);
-            user->rem = REMOVE_USER;
-         } else {
-            /* Relay to children */
+      if (cJSON_IsString(nick_obj) && nick_obj->valuestring != NULL) {
+         const char *n = nick_obj->valuestring;
+         int found = 0;
+         struct sock_t *hu = human_sock_list;
+         while (hu != NULL) {
+            if (hu->user->type == NON_LOGGED
+                && strncasecmp(hu->user->nick, n, MAX_NICK_LEN) == 0
+                && strlen(hu->user->nick) == strlen(n)) {
+               if (cJSON_IsString(reason) && reason->valuestring != NULL)
+                  uprintf(hu->user, "<Hub-Security> %s|", reason->valuestring);
+               hub_mess(hu->user, BAD_PASS_MESS);
+               hu->user->rem = REMOVE_USER;
+               found = 1;
+               break;
+            }
+            hu = hu->next;
+         }
+         if (!found) {
             const char *r = (cJSON_IsString(reason) && reason->valuestring)
                             ? reason->valuestring : "";
             char buf[MAX_NICK_LEN + 256];
-            snprintf(buf, sizeof(buf), "$GwRejectUser %s %s|",
-                     nick->valuestring, r);
+            snprintf(buf, sizeof(buf), "$GwRejectUser %s %s|", n, r);
             send_to_non_humans(buf, FORKED, NULL);
          }
       }
