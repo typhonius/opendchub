@@ -255,8 +255,6 @@ int validate_key(char *buf, struct user_t *user)
    char lock_string[150];
    char key[400];
    int i, j, k, len;
-   fprintf(stderr, "DEBUG validate_key: user=%s type=%d\n", user->nick, user->type);
-   fflush(stderr);
    int lockp;
    
    /* First, reconstruct the lock string that was sent to the client */

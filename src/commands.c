@@ -1176,9 +1176,7 @@ int validate_nick(char *buf, struct user_t *user)
     * to the parent which owns the JSON socket. */
    strncpy(user->nick, temp_nick, MAX_NICK_LEN);
    user->nick[MAX_NICK_LEN] = '\0';
-   fprintf(stderr, "DEBUG validate_nick: nick=%s pid=%d json_sock=%d json_authed=%d\n",
-           temp_nick, (int)pid, json_client_sock, json_client_authed);
-   fflush(stderr);
+   logprintf(3, "validate_nick: %s (pid=%d)\n", temp_nick, (int)pid);
    if (pid <= 0) {
       /* Parent process or no forking — send directly */
       json_event_validate_nick(temp_nick);
