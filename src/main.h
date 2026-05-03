@@ -46,9 +46,6 @@
 					    * nick length + host length.  */
 
 #define CONFIG_FILE        "config"        /* Name of config file */
-#define MOTD_FILE          "motd"          /* Name of file containing the motd */
-#define REG_FILE           "reglist"       /* Name of file with list of registered users */
-#define LINK_FILE          "linklist"      /* Name of file with list of linked hubs */
 #define LOG_FILE           "log"           /* Name of log file */
 #define UN_SOCK_NAME       "odch"          /* Name of unix socket file */
 #define USER_LIST          "odchlist"      /* Name of temporary user list file */
@@ -125,10 +122,17 @@ struct user_t
 /* This is used for a linked list of the humans. This is to get faster 
  * send_to_all:s. I'm pretending it contains the user's sockets, but it really
  * only contains pointers to the users.  */
-struct sock_t 
+struct sock_t
 {
    struct user_t *user;
    struct sock_t *next;
+};
+
+struct linked_hub_t
+{
+   char ip[MAX_HOST_LEN+1];
+   int port;
+   struct linked_hub_t *next;
 };
 
 /* This is system defined as "semun" on some systems, but not defined at all on
@@ -174,6 +178,7 @@ extern int    total_share_sem;
 extern int    user_list_shm_shm;
 extern int    user_list_sem;
 extern char   link_pass[MAX_ADMIN_PASS_LEN+1];
+extern struct linked_hub_t *linked_hub_list;
 extern char   default_pass[MAX_ADMIN_PASS_LEN+1];
 extern volatile sig_atomic_t   upload;
 extern volatile sig_atomic_t   quit;

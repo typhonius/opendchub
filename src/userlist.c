@@ -617,7 +617,6 @@ void send_nick_list(struct user_t *user)
 char *get_op_list(void)
 {
    char *buf, *bufp;
-   int ret;
    char temp_nick[MAX_NICK_LEN+1];
    char temp_host[MAX_HOST_LEN+1];
    char *op_list;
@@ -663,21 +662,6 @@ char *get_op_list(void)
 	if(*bufp != '\0')
 	  {
 	     sscanf(bufp, "%50s %120s", temp_nick, temp_host);
-	     ret = check_if_registered(temp_nick);
-	     if((ret == 2) || (ret == 3))
-	       {
-		  if((op_list = realloc(op_list, sizeof(char)
-					* (strlen(op_list) + strlen(temp_nick) + 3))) == NULL)
-		    {
-		       logprintf(1, "Error - In get_op_list()/realloc(): ");
-		       logerror(1, errno);
-		       shmdt(buf);
-		       sem_give(user_list_sem);
-		       quit = 1;
-		       return NULL;
-		    }
-		  sprintfa(op_list, strlen(op_list) + strlen(temp_nick) + 3, "%s$$", temp_nick);
-	       }
 	  }
 	bufp += USER_LIST_ENT_SIZE;
      }

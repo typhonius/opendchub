@@ -894,14 +894,9 @@ void upload_to_hublist(int nbrusers)
 void send_linked_hubs(void)
 {
    char buf[200];
-   int fd;
    int sock;
    int erret;
-   FILE *fp;
-   char ip[MAX_HOST_LEN+1];
-   char path[MAX_FDP_LEN+1];
-   char line[1024];
-   int port;
+   struct linked_hub_t *entry;
    struct addrinfo hints, *res;
    struct sockaddr_in *addr_in;
    struct sockaddr_in myhost;
@@ -909,64 +904,35 @@ void send_linked_hubs(void)
    int yes = 1;
    char port_str[6];
 
+   if(linked_hub_list == NULL)
+     return;
+
    memset(&myhost, 0, sizeof(struct sockaddr_in));
    memset(&sin, 0, sizeof(struct sockaddr_in));
 
-   snprintf(path, MAX_FDP_LEN, "%s/%s", config_dir, LINK_FILE);
-
-   while(((fd = open(path, O_RDONLY)) < 0) && (errno == EINTR))
-     logprintf(1, "Error - In send_linked_hubs()/open(): Interrupted system call. Trying again.\n");
-
-   if(fd < 0)
-     {
-	logprintf(1, "Error - In send_linked_hubs()/open(): ");
-	logerror(1, errno);
-	return;
-     }
-
-   /* Set the lock */
-   if(set_lock(fd, F_RDLCK) == 0)
-     {
-	logprintf(1, "Error - In send_linked_hubs(): Couldn't set file lock\n");
-	close(fd);
-	return;
-     }
-
-   if((fp = fdopen(fd, "r")) == NULL)
-     {
-	logprintf(1, "Error - In send_linked_hubs()/fdopen(): ");
-	logerror(1, errno);
-	set_lock(fd, F_UNLCK);
-	close(fd);
-	return;
-     }
-
    snprintf(buf, sizeof(buf), "$Up %s %s|", link_pass, hub_hostname);
 
-   while(fgets(line, 1023, fp) != NULL)
+   for(entry = linked_hub_list; entry != NULL; entry = entry->next)
      {
-	trim_string(line);
-	sscanf(line, "%121s %d", ip, &port);
-	if((ip[0] == '\0') || (port < 1) || (port > 65536))
+	if((entry->ip[0] == '\0') || (entry->port < 1) || (entry->port > 65535))
 	  continue;
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_DGRAM;
 
-	snprintf(port_str, sizeof(port_str), "%d", port);
+	snprintf(port_str, sizeof(port_str), "%d", entry->port);
 
-	if(getaddrinfo(ip, port_str, &hints, &res) != 0)
+	if(getaddrinfo(entry->ip, port_str, &hints, &res) != 0)
 	  continue;
 
 	sin.sin_family = AF_INET;
-	sin.sin_port = htons(port);
+	sin.sin_port = htons(entry->port);
 	addr_in = (struct sockaddr_in *)res->ai_addr;
 	memcpy(&sin.sin_addr, &addr_in->sin_addr, sizeof(sin.sin_addr));
 
 	freeaddrinfo(res);
 
-	/* These messages are udp */
 	if((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
 	  {
 	     logprintf(1, "Error - In send_linked_hubs()/socket(): ");
@@ -986,19 +952,17 @@ void send_linked_hubs(void)
 	     return;
 	  }
 
-	/* Bind socket to port */
 	if(bind(sock, (struct sockaddr *)&myhost, sizeof(myhost)) == -1)
-	   {
-
-	      logprintf(1, "Error - In send_linked_hubs()/bind(): ");
-	      logerror(1, errno);
-	      return;
-	   }
+	  {
+	     logprintf(1, "Error - In send_linked_hubs()/bind(): ");
+	     logerror(1, errno);
+	     return;
+	  }
 
 	sendto(sock, buf, strlen(buf), 0, (struct sockaddr *)&sin,
-		   sizeof(sin));
+	       sizeof(sin));
 
-	while(((erret =  close(sock)) != 0) && (errno == EINTR))
+	while(((erret = close(sock)) != 0) && (errno == EINTR))
 	  logprintf(1, "Error - In send_linked_hubs()/close(): Interrupted system call. Trying again.\n");
 
 	if(erret != 0)
@@ -1006,19 +970,57 @@ void send_linked_hubs(void)
 	     logprintf(1, "Error - In send_linked_hubs()/close(): ");
 	     logerror(1, errno);
 	  }
-
      }
+}
 
-   set_lock(fd, F_UNLCK);
+/* Add a hub to the in-memory linked hub list. Returns 1 on success,
+ * 0 if already present. */
+int add_linked_hub_entry(const char *ip, int port)
+{
+   struct linked_hub_t *entry;
 
-   while(((erret = fclose(fp)) != 0) && (errno == EINTR))
-     logprintf(1, "Error - In read_config()/fclose(): Interrupted system call. Trying again.\n");
-
-   if(erret != 0)
+   for(entry = linked_hub_list; entry != NULL; entry = entry->next)
      {
-	logprintf(1, "Error - In read_config()/fclose(): ");
-	logerror(1, errno);
+	if((strncmp(entry->ip, ip, MAX_HOST_LEN) == 0) && (entry->port == port))
+	  return 0;
      }
+
+   if((entry = malloc(sizeof(struct linked_hub_t))) == NULL)
+     {
+	logprintf(1, "Error - In add_linked_hub_entry()/malloc(): ");
+	logerror(1, errno);
+	return -1;
+     }
+
+   strncpy(entry->ip, ip, MAX_HOST_LEN);
+   entry->ip[MAX_HOST_LEN] = '\0';
+   entry->port = port;
+   entry->next = linked_hub_list;
+   linked_hub_list = entry;
+   return 1;
+}
+
+/* Remove a hub from the in-memory linked hub list. Returns 1 on success,
+ * 0 if not found. */
+int remove_linked_hub_entry(const char *ip, int port)
+{
+   struct linked_hub_t *entry, *prev;
+
+   prev = NULL;
+   for(entry = linked_hub_list; entry != NULL; entry = entry->next)
+     {
+	if((strncmp(entry->ip, ip, MAX_HOST_LEN) == 0) && (entry->port == port))
+	  {
+	     if(prev == NULL)
+	       linked_hub_list = entry->next;
+	     else
+	       prev->next = entry->next;
+	     free(entry);
+	     return 1;
+	  }
+	prev = entry;
+     }
+   return 0;
 }
 
 /* Add a users socket to the socket list.  */

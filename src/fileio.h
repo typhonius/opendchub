@@ -18,22 +18,8 @@
 
 
 int read_config(void);
-int check_if_registered(char *user_nick);
-int get_permissions(char *user_nick);
 int write_config_file(void);
 int set_lock(int fd, int type);
-int add_reg_user(char *buf, struct user_t *user);
-int remove_reg_user(char *buf, struct user_t *user);
-int add_linked_hub(char *buf);
-int remove_linked_hub(char *buf);
 int init_dirs(void);
 void logprintf(int verb, const char *format, ...);
-int send_motd(struct user_t *user);
-int write_motd(char *buf, int overwrite);
-int welcome_mess(struct user_t *user);
 void logerror(int verb, int error);
-int add_line_to_file(char *line, char *file);
-int remove_line_from_file(char *line, char *file, int port);
-int my_scandir(char *dirname, char *namelist[]);
-int remove_exp_from_file(time_t now_time, char *file);
-int check_if_on_linklist(char *ip, int port);

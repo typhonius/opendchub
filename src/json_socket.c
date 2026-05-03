@@ -261,32 +261,27 @@ static void handle_json_command(cJSON *root)
          logprintf(3, "JSON socket: purged %d stale connection(s)\n", purged);
    }
 
-   /* Register a user in the hub reglist.
-    * add_reg_user() expects "$AddRegUser nick pass type" and a user pointer. */
-   else if (strcmp(type, "register_user") == 0) {
-      cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
-      cJSON *pass = cJSON_GetObjectItemCaseSensitive(root, "password");
-      cJSON *perm = cJSON_GetObjectItemCaseSensitive(root, "permission");
-      if (cJSON_IsString(nick) && cJSON_IsString(pass) && cJSON_IsNumber(perm)) {
-         int ptype = perm->valueint;
-         if (ptype < 0) ptype = 0;
-         if (ptype > 3) ptype = 3;
-         char cmd[512];
-         snprintf(cmd, sizeof(cmd), "$AddRegUser %s %s %d",
-                  nick->valuestring, pass->valuestring, ptype);
-         add_reg_user(cmd, NULL);
-         logprintf(3, "JSON socket: registered user %s (type %d)\n",
-                   nick->valuestring, ptype);
+   /* Add a hub to the in-memory linked hub list. */
+   else if (strcmp(type, "add_linked_hub") == 0) {
+      cJSON *ip_j = cJSON_GetObjectItemCaseSensitive(root, "ip");
+      cJSON *port_j = cJSON_GetObjectItemCaseSensitive(root, "port");
+      if (cJSON_IsString(ip_j) && cJSON_IsNumber(port_j)) {
+         int ret = add_linked_hub_entry(ip_j->valuestring, port_j->valueint);
+         if (ret == 1)
+            logprintf(3, "JSON socket: added linked hub %s:%d\n",
+                      ip_j->valuestring, port_j->valueint);
       }
    }
 
-   /* Unregister a user.
-    * remove_reg_user() expects the nick string and a user pointer. */
-   else if (strcmp(type, "unregister_user") == 0) {
-      cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
-      if (cJSON_IsString(nick) && nick->valuestring != NULL) {
-         remove_reg_user(nick->valuestring, NULL);
-         logprintf(3, "JSON socket: unregistered user %s\n", nick->valuestring);
+   /* Remove a hub from the in-memory linked hub list. */
+   else if (strcmp(type, "remove_linked_hub") == 0) {
+      cJSON *ip_j = cJSON_GetObjectItemCaseSensitive(root, "ip");
+      cJSON *port_j = cJSON_GetObjectItemCaseSensitive(root, "port");
+      if (cJSON_IsString(ip_j) && cJSON_IsNumber(port_j)) {
+         int ret = remove_linked_hub_entry(ip_j->valuestring, port_j->valueint);
+         if (ret == 1)
+            logprintf(3, "JSON socket: removed linked hub %s:%d\n",
+                      ip_j->valuestring, port_j->valueint);
       }
    }
 

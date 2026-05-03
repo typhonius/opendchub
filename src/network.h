@@ -26,6 +26,8 @@ int    get_listening_udp_socket(int port);
 char   *hostname_from_ip(long unsigned ip);
 void   upload_to_hublist(int nbrusers);
 void   send_linked_hubs(void);
+int    add_linked_hub_entry(const char *ip, int port);
+int    remove_linked_hub_entry(const char *ip, int port);
 void   add_socket(struct user_t *user);
 void   remove_socket(struct user_t *user);
 void   send_to_non_humans(char *buf, int type, struct user_t *ex_user);

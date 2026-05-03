@@ -1171,8 +1171,6 @@ int validate_nick(char *buf, struct user_t *user)
    strncpy(user->nick, temp_nick, MAX_NICK_LEN);
    user->nick[MAX_NICK_LEN] = '\0';
    hub_mess(user, HELLO_MESS);
-   if(welcome_mess(user) == -1)
-     return 0;
    return 1;
 }
 

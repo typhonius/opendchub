@@ -111,6 +111,7 @@ int    total_share_sem = 0;
 int    user_list_shm_shm = 0;
 int    user_list_sem = 0;
 char   link_pass[MAX_ADMIN_PASS_LEN+1] = {0};
+struct linked_hub_t *linked_hub_list = NULL;
 char   default_pass[MAX_ADMIN_PASS_LEN+1] = {0};
 volatile sig_atomic_t   upload = 0;
 volatile sig_atomic_t   quit = 0;
@@ -860,10 +861,8 @@ void hub_mess(struct user_t *user, int mess_type)
 /* Returns 0 if user should be removed */
 int handle_command(char *buf, struct user_t *user)
 {
-   int ret;
    char *temp;
-   char tempstr[MAX_HOST_LEN+1]; 
-  
+
    temp = NULL;
    while(buf != NULL)
      {
@@ -1125,15 +1124,6 @@ int handle_command(char *buf, struct user_t *user)
 		    }
 	       }
 	     
-	     else if(strncasecmp(temp, "$GetMotd", 8) == 0)
-	       {
-		  if(user->type == ADMIN)
-		    {
-		       uprintf(user, "\r\n");
-		       send_motd(user);
-		       send_to_user("\r\n", user);
-		    }
-	       }
 	     else if(strncasecmp(temp, "$GetStatus", 10) == 0)
 	       {
 		  if(user->type == ADMIN)
@@ -1188,88 +1178,6 @@ int handle_command(char *buf, struct user_t *user)
 			 }
 		       uprintf(user, "USER END|\r\n");
 		    }
-	       }
-	     else if(strncasecmp(temp, "$AddRegUser ", 12) == 0)
-	       {
-		  if((user->type & ADMIN) != 0)
-		    {
-		       ret = add_reg_user(temp, user);
-		       if(user->type == ADMIN)
-			 {			    
-			    if(ret == -1)
-			      send_to_user("\r\nCouldn't add user to reg list\r\n", user);
-			    else if(ret == 2)
-			      send_to_user("\r\nBad format for $AddRegUser. Correct format is:\r\n$AddRegUser <nickname> <password> <opstatus>|\r\n", user);
-			    else if(ret == 3)
-			      send_to_user("\r\nThat nickname is already registered\r\n", user);
-			    else
-			      {			    
-				 send_to_user("\r\nAdded user to reglist\r\n", user);
-				 logprintf(3, "Admin at %s added entry to reglist\n", user->hostname);
-			      }		       
-			 }
-		    }
-	       }	     
-	     else if(strncasecmp(temp, "$RemoveRegUser ", 15) == 0)
-	       {
-		  if((user->type & ADMIN) != 0)
-		    {
-		       ret = remove_reg_user(temp+15, user);
-		       if(user->type == ADMIN)
-			 {			     
-			    if(ret == 0)
-			      send_to_user("\r\nUser wasn't found in reg list\r\n", user);
-			    else if(ret == -1)
-			      send_to_user("\r\nCouldn't remove user from reg list\r\n", user);
-			    else
-			      {			    
-				 send_to_user("\r\nRemoved user from reglist\r\n", user);
-				 logprintf(3, "Admin at %s removed entry from reglist\n", user->hostname);
-			      }		       			    
-			 }
-		    }
-	       }		  
-	     else if(strncasecmp(temp, "$AddLinkedHub ", 14) == 0)
-	       {
-		  if((user->type & ADMIN) != 0)
-		    {
-		       ret = add_linked_hub(temp);
-		       if(user->type == ADMIN)
-			 {			    
-			    if(ret == -1)
-			      send_to_user("\r\nCouldn't add hub to link list\r\n", user);
-			    else if(ret == 2)
-			      send_to_user("\r\nBad format for $AddLinkedHub. Correct format is:\r\n$AddLinkedHub <ip> <port>|\r\n", user);
-			    else if(ret == 3)
-			      send_to_user("\r\nThat hub is already in the linklist\r\n", user);
-			    else
-			      {			    
-				 send_to_user("\r\nAdded hub to linklist\r\n", user);
-				 logprintf(3, "Admin at %s added entry to linklist\n", user->hostname);
-			      }
-			 }		       		       
-		    }
-	       }
-	     else if(strncasecmp(temp, "$RemoveLinkedHub ", 17) == 0)
-	       {
-		  if((user->type & ADMIN) != 0)
-		    {
-		       ret = remove_linked_hub(temp+17);
-		       if(user->type == ADMIN)
-			 {			    
-			    if(ret == 0)
-			      send_to_user("\r\nHub wasn't found in link list\r\n", user);
-			    else if(ret == -1)
-			      send_to_user("\r\nCouldn't remove hub from link list\r\n", user);
-			    else if(ret == 2)
-			      send_to_user("\r\nBad format for $RemoveLinkedHub. Correct format is:\r\n$RemoveLinkedHub <ip> <port>|\r\n", user);
-			    else
-			      {			    
-				 send_to_user("\r\nRemoved hub from linklist\r\n", user);
-				 logprintf(3, "Admin at %s removed entry from linklist\n", user->hostname);
-			      }		       
-			 }
-		    }		  
 	       }
 	     else if(strncmp(temp, "$MultiSearch ", 13) == 0)
 	       {
@@ -2436,14 +2344,6 @@ int main(int argc, char *argv[])
 	openlog(SYSLOG_IDENT, LOG_ODELAY, LOG_USER);
      }
 #endif
-   if((ret = write_motd("Welcome to the hub. Enjoy your stay.", 0)) == -1)
-     {
-	logprintf(1, "Failed creating motd file! Exiting\n");
-	exit(EXIT_FAILURE);
-     }
-   else if(ret == 1)
-     logprintf(1, "Created motd file\n");
-   
    /* File-based lists removed — all data managed by gateway via PostgreSQL. */
    if((int)hub_hostname[0] <= 0x20)
      if(set_hub_hostname() == -1)     
