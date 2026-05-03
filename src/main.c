@@ -73,6 +73,7 @@
 #include "utils.h"
 #include "fileio.h"
 #include "userlist.h"
+#include "json_socket.h"
 
 #ifndef SIGCHLD
 # define SIGCHLD SIGCLD
@@ -1100,6 +1101,71 @@ int handle_command(char *buf, struct user_t *user)
 		  switch_listening_process(temp, user);
 	       }
 	     
+	     /* Gateway auth relay: child→parent (request) */
+	     else if((strncmp(temp, "$GwValidateNick ", 16) == 0)
+		     && (user->type == FORKED) && (pid == 0))
+	       {
+		  char gw_nick[MAX_NICK_LEN+1];
+		  if(sscanf(temp, "$GwValidateNick %50[^|]|", gw_nick) == 1)
+		    json_event_validate_nick(gw_nick);
+	       }
+
+	     else if((strncmp(temp, "$GwCheckPass ", 13) == 0)
+		     && (user->type == FORKED) && (pid == 0))
+	       {
+		  char gw_nick[MAX_NICK_LEN+1];
+		  char gw_pass[MAX_ADMIN_PASS_LEN+1];
+		  if(sscanf(temp, "$GwCheckPass %50s %50[^|]|", gw_nick, gw_pass) == 2)
+		    json_event_check_password(gw_nick, gw_pass);
+	       }
+
+	     /* Gateway auth relay: parent→child (response) */
+	     else if((strncmp(temp, "$GwGetPass ", 11) == 0)
+		     && (user->type == FORKED) && (pid > 0))
+	       {
+		  char gw_nick[MAX_NICK_LEN+1];
+		  if(sscanf(temp, "$GwGetPass %50[^|]|", gw_nick) == 1) {
+		     struct user_t *hu = get_human_user(gw_nick);
+		     if(hu != NULL && hu->type == NON_LOGGED)
+		       uprintf(hu, "<Hub-Security> Your nickname is registered, please supply a password.|$GetPass|");
+		  }
+	       }
+
+	     else if((strncmp(temp, "$GwLoginUser ", 13) == 0)
+		     && (user->type == FORKED) && (pid > 0))
+	       {
+		  char gw_nick[MAX_NICK_LEN+1];
+		  int gw_perm = 0;
+		  if(sscanf(temp, "$GwLoginUser %50s %d|", gw_nick, &gw_perm) >= 1) {
+		     struct user_t *hu = get_human_user(gw_nick);
+		     if(hu != NULL && hu->type == NON_LOGGED) {
+			if(gw_perm >= 3) hu->type = OP_ADMIN;
+			else if(gw_perm >= 2) hu->type = OP;
+			else if(gw_perm >= 1) hu->type = REGISTERED;
+			hub_mess(hu, HELLO_MESS);
+			if(gw_perm >= 2) hub_mess(hu, OP_LOGGED_IN_MESS);
+			logprintf(3, "Gateway login: %s (permission=%d)\n", gw_nick, gw_perm);
+		     }
+		  }
+	       }
+
+	     else if((strncmp(temp, "$GwRejectUser ", 14) == 0)
+		     && (user->type == FORKED) && (pid > 0))
+	       {
+		  char gw_nick[MAX_NICK_LEN+1];
+		  char gw_reason[256];
+		  gw_reason[0] = '\0';
+		  if(sscanf(temp, "$GwRejectUser %50s %255[^|]|", gw_nick, gw_reason) >= 1) {
+		     struct user_t *hu = get_human_user(gw_nick);
+		     if(hu != NULL) {
+			if(gw_reason[0] != '\0')
+			  uprintf(hu, "<Hub-Security> %s|", gw_reason);
+			hub_mess(hu, BAD_PASS_MESS);
+			hu->rem = REMOVE_USER;
+		     }
+		  }
+	       }
+
 	     else if((strncmp(temp, "$DiscUser", 9) == 0)
 		     && (user->type == FORKED))
 	       {

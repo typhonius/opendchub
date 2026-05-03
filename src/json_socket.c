@@ -513,61 +513,68 @@ static void handle_json_command(cJSON *root)
    }
 
    /* Gateway tells hub to challenge user for password */
+   /* Gateway auth responses — relay to all processes via internal commands.
+    * The user may be in a child process, so we can't use get_human_user
+    * directly (it only finds users local to this process).  Instead, send
+    * internal NMDC commands that each process handles. */
    else if (strcmp(type, "send_getpass") == 0) {
       cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
       if (cJSON_IsString(nick) && nick->valuestring != NULL) {
+         char buf[MAX_NICK_LEN + 20];
+         snprintf(buf, sizeof(buf), "$GwGetPass %s|", nick->valuestring);
+         /* Try local first, then relay to children */
          struct user_t *user = get_human_user(nick->valuestring);
          if (user != NULL && user->type == NON_LOGGED) {
             uprintf(user, "<Hub-Security> Your nickname is registered, please supply a password.|$GetPass|");
+         } else {
+            send_to_non_humans(buf, FORKED, NULL);
          }
       }
    }
 
-   /* Gateway tells hub to accept a user login with given permission */
    else if (strcmp(type, "login_user") == 0) {
       cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
       cJSON *perm = cJSON_GetObjectItemCaseSensitive(root, "permission");
       if (cJSON_IsString(nick) && nick->valuestring != NULL) {
+         int permission = cJSON_IsNumber(perm) ? perm->valueint : 0;
          struct user_t *user = get_human_user(nick->valuestring);
          if (user != NULL && user->type == NON_LOGGED) {
-            int permission = cJSON_IsNumber(perm) ? perm->valueint : 0;
-            /* Set user type based on permission */
-            if (permission >= 3) {
-               user->type = OP_ADMIN;
-            } else if (permission >= 2) {
-               user->type = OP;
-            } else if (permission >= 1) {
-               user->type = REGISTERED;
-            }
-            /* NOTE: For REGULAR (permission 0), DON'T set type here —
-             * my_info() handles the NON_LOGGED -> REGULAR transition at line 1055-1057 */
-
-            /* Send $Hello to accept login */
+            /* Local user — handle directly */
+            if (permission >= 3) user->type = OP_ADMIN;
+            else if (permission >= 2) user->type = OP;
+            else if (permission >= 1) user->type = REGISTERED;
             hub_mess(user, HELLO_MESS);
-
-            /* For ops, also send $LogedIn */
-            if (permission >= 2) {
-               hub_mess(user, OP_LOGGED_IN_MESS);
-            }
-
+            if (permission >= 2) hub_mess(user, OP_LOGGED_IN_MESS);
             logprintf(3, "JSON socket: login_user %s (permission=%d)\n",
                       nick->valuestring, permission);
+         } else {
+            /* Relay to children */
+            char buf[MAX_NICK_LEN + 30];
+            snprintf(buf, sizeof(buf), "$GwLoginUser %s %d|",
+                     nick->valuestring, permission);
+            send_to_non_humans(buf, FORKED, NULL);
          }
       }
    }
 
-   /* Gateway tells hub to reject a user */
    else if (strcmp(type, "reject_user") == 0) {
       cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
       cJSON *reason = cJSON_GetObjectItemCaseSensitive(root, "reason");
       if (cJSON_IsString(nick) && nick->valuestring != NULL) {
          struct user_t *user = get_human_user(nick->valuestring);
          if (user != NULL) {
-            if (cJSON_IsString(reason) && reason->valuestring != NULL) {
+            if (cJSON_IsString(reason) && reason->valuestring != NULL)
                uprintf(user, "<Hub-Security> %s|", reason->valuestring);
-            }
             hub_mess(user, BAD_PASS_MESS);
             user->rem = REMOVE_USER;
+         } else {
+            /* Relay to children */
+            const char *r = (cJSON_IsString(reason) && reason->valuestring)
+                            ? reason->valuestring : "";
+            char buf[MAX_NICK_LEN + 256];
+            snprintf(buf, sizeof(buf), "$GwRejectUser %s %s|",
+                     nick->valuestring, r);
+            send_to_non_humans(buf, FORKED, NULL);
          }
       }
    }

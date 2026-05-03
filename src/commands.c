@@ -1169,10 +1169,22 @@ int validate_nick(char *buf, struct user_t *user)
 
    /* Set nick, then ask gateway whether this user is registered.
     * Gateway will respond with login_user (unregistered) or send_getpass (registered).
-    * User stays in NON_LOGGED state until gateway responds. */
+    * User stays in NON_LOGGED state until gateway responds.
+    *
+    * If we're in the parent process (pid > 0 or no forking), call the JSON
+    * event directly.  If we're in a child, relay via an internal command
+    * to the parent which owns the JSON socket. */
    strncpy(user->nick, temp_nick, MAX_NICK_LEN);
    user->nick[MAX_NICK_LEN] = '\0';
-   json_event_validate_nick(temp_nick);
+   if (pid <= 0) {
+      /* Parent process or no forking — send directly */
+      json_event_validate_nick(temp_nick);
+   } else {
+      /* Child process — relay to parent via internal command */
+      char relay[MAX_NICK_LEN + 20];
+      snprintf(relay, sizeof(relay), "$GwValidateNick %s|", temp_nick);
+      send_to_non_humans(relay, FORKED, user);
+   }
    return 1;
 }
 
@@ -1216,7 +1228,13 @@ int my_pass(char *buf, struct user_t *user)
       if (pipe) *pipe = '\0';
    }
 
-   json_event_check_password(user->nick, pass);
+   if (pid <= 0) {
+      json_event_check_password(user->nick, pass);
+   } else {
+      char relay[MAX_NICK_LEN + MAX_ADMIN_PASS_LEN + 20];
+      snprintf(relay, sizeof(relay), "$GwCheckPass %s %s|", user->nick, pass);
+      send_to_non_humans(relay, FORKED, user);
+   }
    return 1;  /* keep user connected, waiting for gateway response */
 }
 
