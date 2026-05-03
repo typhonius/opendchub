@@ -1158,15 +1158,9 @@ int validate_nick(char *buf, struct user_t *user)
 	return 0;
      }
 
-   /* Reserved nicks: gateway bots and system identities */
-   if(strcasecmp(temp_nick, "Sentinel") == 0
-      || strcasecmp(temp_nick, "Dragon") == 0
-      || strcasecmp(temp_nick, "OPChat") == 0)
-     {
-	uprintf(user, "$ValidateDenide %s|", temp_nick);
-	return 0;
-     }
-   
+   /* Reserved bot nicks are checked by the gateway in validate_nick handler.
+    * No hardcoded list here — the gateway checks its bot registry dynamically. */
+
    /* Check if nick is already taken by another online user */
    if(((check_if_on_user_list(temp_nick)) != NULL)
        || (get_human_user(temp_nick) != NULL))
