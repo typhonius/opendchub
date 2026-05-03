@@ -209,27 +209,30 @@ static void handle_json_command(cJSON *root)
       }
    }
 
-   /* Send private message to specific user */
+   /* Send private message to specific user.
+    * If user not found locally, relay the formatted NMDC string to child
+    * processes which may have the user. */
    else if (strcmp(type, "send_to") == 0) {
       cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
       cJSON *msg = cJSON_GetObjectItemCaseSensitive(root, "message");
       if (cJSON_IsString(nick) && cJSON_IsString(msg)
           && nick->valuestring != NULL && msg->valuestring != NULL) {
-         struct user_t *user = get_human_user(nick->valuestring);
-         if (user != NULL) {
-            char *safe = nmdc_sanitize(msg->valuestring);
-            /* Send as hub PM: $To: nick From: Hub-Security $<Hub-Security> message| */
-            int buf_len = strlen(nick->valuestring) + strlen(safe) + 100;
-            char *buf = malloc(buf_len);
-            if (buf != NULL) {
-               snprintf(buf, buf_len,
-                  "$To: %s From: Hub-Security $<Hub-Security> %s|",
-                  nick->valuestring, safe);
+         char *safe = nmdc_sanitize(msg->valuestring);
+         int buf_len = strlen(nick->valuestring) + strlen(safe) + 100;
+         char *buf = malloc(buf_len);
+         if (buf != NULL) {
+            snprintf(buf, buf_len,
+               "$To: %s From: Hub-Security $<Hub-Security> %s|",
+               nick->valuestring, safe);
+            struct user_t *user = get_human_user(nick->valuestring);
+            if (user != NULL) {
                send_to_user(buf, user);
-               free(buf);
+            } else {
+               send_to_non_humans(buf, FORKED, NULL);
             }
-            free(safe);
+            free(buf);
          }
+         free(safe);
       }
    }
 
@@ -310,7 +313,8 @@ static void handle_json_command(cJSON *root)
       }
    }
 
-   /* Send a PM from a virtual user to a specific real user */
+   /* Send a PM from a virtual user to a specific real user.
+    * Relays to children if user not found locally. */
    else if (strcmp(type, "send_pm_as") == 0) {
       cJSON *from = cJSON_GetObjectItemCaseSensitive(root, "from");
       cJSON *to = cJSON_GetObjectItemCaseSensitive(root, "to");
@@ -318,27 +322,29 @@ static void handle_json_command(cJSON *root)
       if (cJSON_IsString(from) && cJSON_IsString(to) && cJSON_IsString(msg)
           && from->valuestring != NULL && to->valuestring != NULL
           && msg->valuestring != NULL) {
-         struct user_t *user = get_human_user(to->valuestring);
-         if (user != NULL && user->sock >= 0) {
-            char *safe_msg = nmdc_sanitize(msg->valuestring);
-            int buf_len = strlen(from->valuestring) * 2
-                        + strlen(to->valuestring) + strlen(safe_msg) + 32;
-            char *buf = malloc(buf_len);
-            if (buf != NULL) {
-               snprintf(buf, buf_len,
-                  "$To: %s From: %s $<%s> %s|",
-                  to->valuestring, from->valuestring,
-                  from->valuestring, safe_msg);
+         char *safe_msg = nmdc_sanitize(msg->valuestring);
+         int buf_len = strlen(from->valuestring) * 2
+                     + strlen(to->valuestring) + strlen(safe_msg) + 32;
+         char *buf = malloc(buf_len);
+         if (buf != NULL) {
+            snprintf(buf, buf_len,
+               "$To: %s From: %s $<%s> %s|",
+               to->valuestring, from->valuestring,
+               from->valuestring, safe_msg);
+            struct user_t *user = get_human_user(to->valuestring);
+            if (user != NULL && user->sock >= 0) {
                send_to_user(buf, user);
-               free(buf);
+            } else {
+               send_to_non_humans(buf, FORKED, NULL);
             }
-            free(safe_msg);
+            free(buf);
          }
+         free(safe_msg);
       }
    }
 
    /* Send a chat-style message from a nick to a specific user only (not a PM,
-    * appears in their main chat window). This is PUBLIC_SINGLE in v3 terms. */
+    * appears in their main chat window). Relays to children if user not found. */
    else if (strcmp(type, "send_to_as") == 0) {
       cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
       cJSON *to = cJSON_GetObjectItemCaseSensitive(root, "to");
@@ -346,19 +352,22 @@ static void handle_json_command(cJSON *root)
       if (cJSON_IsString(nick) && cJSON_IsString(to) && cJSON_IsString(msg)
           && nick->valuestring != NULL && to->valuestring != NULL
           && msg->valuestring != NULL) {
-         struct user_t *user = get_human_user(to->valuestring);
-         if (user != NULL && user->sock >= 0) {
-            char *safe_nick = nmdc_sanitize(nick->valuestring);
-            char *safe_msg = nmdc_sanitize(msg->valuestring);
-            int buf_len = strlen(safe_nick) + strlen(safe_msg) + 8;
-            char *buf = malloc(buf_len);
-            if (buf != NULL) {
-               snprintf(buf, buf_len, "<%s> %s|", safe_nick, safe_msg);
+         char *safe_nick = nmdc_sanitize(nick->valuestring);
+         char *safe_msg = nmdc_sanitize(msg->valuestring);
+         int buf_len = strlen(safe_nick) + strlen(safe_msg) + 8;
+         char *buf = malloc(buf_len);
+         if (buf != NULL) {
+            snprintf(buf, buf_len, "<%s> %s|", safe_nick, safe_msg);
+            struct user_t *user = get_human_user(to->valuestring);
+            if (user != NULL && user->sock >= 0) {
                send_to_user(buf, user);
-               free(buf);
+            } else {
+               send_to_non_humans(buf, FORKED, NULL);
             }
-            free(safe_nick);
-            free(safe_msg);
+            free(buf);
+         }
+         free(safe_nick);
+         free(safe_msg);
          }
       }
    }
