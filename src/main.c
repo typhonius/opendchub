@@ -864,6 +864,9 @@ int handle_command(char *buf, struct user_t *user)
 {
    char *temp;
 
+   fprintf(stderr, "DEBUG handle_command: user_type=%d buf=%.80s\n", user->type, buf ? buf : "(null)");
+   fflush(stderr);
+
    temp = NULL;
    while(buf != NULL)
      {
