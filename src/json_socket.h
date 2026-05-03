@@ -68,6 +68,8 @@ void json_event_kick(const char *nick, const char *by);
 void json_event_search(const char *nick, const char *query);
 void json_event_pm(const char *from_nick, const char *to_nick,
                    const char *message);
+void json_event_validate_nick(const char *nick);
+void json_event_check_password(const char *nick, const char *password);
 
 /* Send hub status as a JSON event (response to get_status command). */
 void json_send_status(void);

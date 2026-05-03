@@ -56,6 +56,7 @@
 #include "commands.h"
 #include "network.h"
 #include "userlist.h"
+#include "json_socket.h"
 
 #ifndef HAVE_STRTOLL
 # ifdef HAVE_STRTOQ
@@ -1166,11 +1167,12 @@ int validate_nick(char *buf, struct user_t *user)
 	return -1;
      }
 
-   /* Hub accepts all nicks. Registration, bans, and gags are handled
-    * by the gateway via the JSON socket. Hub just logs them in. */
+   /* Set nick, then ask gateway whether this user is registered.
+    * Gateway will respond with login_user (unregistered) or send_getpass (registered).
+    * User stays in NON_LOGGED state until gateway responds. */
    strncpy(user->nick, temp_nick, MAX_NICK_LEN);
    user->nick[MAX_NICK_LEN] = '\0';
-   hub_mess(user, HELLO_MESS);
+   json_event_validate_nick(temp_nick);
    return 1;
 }
 
@@ -1200,9 +1202,23 @@ int version(char *buf, struct user_t *user)
    return 1;
 }
 
-/* Stub -- gateway handles password checking */
+/* Forward password to gateway for verification.
+ * Gateway will respond with login_user (correct) or reject_user (wrong). */
 int my_pass(char *buf, struct user_t *user)
-{ (void)buf; (void)user; return 0; }
+{
+   char pass[MAX_ADMIN_PASS_LEN+1];
+
+   /* Strip trailing | */
+   strncpy(pass, buf, MAX_ADMIN_PASS_LEN);
+   pass[MAX_ADMIN_PASS_LEN] = '\0';
+   {
+      char *pipe = strchr(pass, '|');
+      if (pipe) *pipe = '\0';
+   }
+
+   json_event_check_password(user->nick, pass);
+   return 1;  /* keep user connected, waiting for gateway response */
+}
 
 /* Removes a user without sending $Quit.  */
 void disc_user(char *buf, struct user_t *user)

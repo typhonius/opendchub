@@ -512,6 +512,66 @@ static void handle_json_command(cJSON *root)
                 nick->valuestring);
    }
 
+   /* Gateway tells hub to challenge user for password */
+   else if (strcmp(type, "send_getpass") == 0) {
+      cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
+      if (cJSON_IsString(nick) && nick->valuestring != NULL) {
+         struct user_t *user = get_human_user(nick->valuestring);
+         if (user != NULL && user->type == NON_LOGGED) {
+            uprintf(user, "<Hub-Security> Your nickname is registered, please supply a password.|$GetPass|");
+         }
+      }
+   }
+
+   /* Gateway tells hub to accept a user login with given permission */
+   else if (strcmp(type, "login_user") == 0) {
+      cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
+      cJSON *perm = cJSON_GetObjectItemCaseSensitive(root, "permission");
+      if (cJSON_IsString(nick) && nick->valuestring != NULL) {
+         struct user_t *user = get_human_user(nick->valuestring);
+         if (user != NULL && user->type == NON_LOGGED) {
+            int permission = cJSON_IsNumber(perm) ? perm->valueint : 0;
+            /* Set user type based on permission */
+            if (permission >= 3) {
+               user->type = OP_ADMIN;
+            } else if (permission >= 2) {
+               user->type = OP;
+            } else if (permission >= 1) {
+               user->type = REGISTERED;
+            }
+            /* NOTE: For REGULAR (permission 0), DON'T set type here —
+             * my_info() handles the NON_LOGGED -> REGULAR transition at line 1055-1057 */
+
+            /* Send $Hello to accept login */
+            hub_mess(user, HELLO_MESS);
+
+            /* For ops, also send $LogedIn */
+            if (permission >= 2) {
+               hub_mess(user, OP_LOGGED_IN_MESS);
+            }
+
+            logprintf(3, "JSON socket: login_user %s (permission=%d)\n",
+                      nick->valuestring, permission);
+         }
+      }
+   }
+
+   /* Gateway tells hub to reject a user */
+   else if (strcmp(type, "reject_user") == 0) {
+      cJSON *nick = cJSON_GetObjectItemCaseSensitive(root, "nick");
+      cJSON *reason = cJSON_GetObjectItemCaseSensitive(root, "reason");
+      if (cJSON_IsString(nick) && nick->valuestring != NULL) {
+         struct user_t *user = get_human_user(nick->valuestring);
+         if (user != NULL) {
+            if (cJSON_IsString(reason) && reason->valuestring != NULL) {
+               uprintf(user, "<Hub-Security> %s|", reason->valuestring);
+            }
+            hub_mess(user, BAD_PASS_MESS);
+            user->rem = REMOVE_USER;
+         }
+      }
+   }
+
    else {
       logprintf(2, "JSON socket: unknown command type '%s'\n", type);
    }
@@ -832,6 +892,43 @@ void json_event_pm(const char *from_nick, const char *to_nick,
    cJSON_AddStringToObject(root, "from", from_nick ? from_nick : "");
    cJSON_AddStringToObject(root, "to", to_nick ? to_nick : "");
    cJSON_AddStringToObject(root, "message", message ? message : "");
+   cJSON_AddNumberToObject(root, "ts", (double)time(NULL));
+
+   char *str = cJSON_PrintUnformatted(root);
+   if (str != NULL) {
+      json_send_event(str);
+      free(str);
+   }
+   cJSON_Delete(root);
+}
+
+void json_event_validate_nick(const char *nick)
+{
+   if (json_client_sock < 0 || !json_client_authed)
+      return;
+
+   cJSON *root = cJSON_CreateObject();
+   cJSON_AddStringToObject(root, "type", "validate_nick");
+   cJSON_AddStringToObject(root, "nick", nick ? nick : "");
+   cJSON_AddNumberToObject(root, "ts", (double)time(NULL));
+
+   char *str = cJSON_PrintUnformatted(root);
+   if (str != NULL) {
+      json_send_event(str);
+      free(str);
+   }
+   cJSON_Delete(root);
+}
+
+void json_event_check_password(const char *nick, const char *password)
+{
+   if (json_client_sock < 0 || !json_client_authed)
+      return;
+
+   cJSON *root = cJSON_CreateObject();
+   cJSON_AddStringToObject(root, "type", "check_password");
+   cJSON_AddStringToObject(root, "nick", nick ? nick : "");
+   cJSON_AddStringToObject(root, "password", password ? password : "");
    cJSON_AddNumberToObject(root, "ts", (double)time(NULL));
 
    char *str = cJSON_PrintUnformatted(root);
