@@ -1313,6 +1313,9 @@ int new_human_user(int sock)
 
    /* Reset the last search time */
    user->last_search = 0;
+
+   /* Initialize last activity to now */
+   user->last_activity = time(NULL);
    
    /* Avoid dead peers */
    if(setsockopt(user->sock, SOL_SOCKET, SO_KEEPALIVE, &yes,
@@ -1888,12 +1891,15 @@ int socket_action(struct user_t *user)
 	     return -1;
 	  }
      } 
-   else 
+   else
      {
+	/* Update last activity timestamp for idle timeout detection */
+	user->last_activity = time(NULL);
+
 	/* Set the char after the last received one in buf to null in case the memory
 	 * position was set to something else than null before */
 	buf[buf_len] = '\0';
-	
+
 	/* If the inbuf is empty */
 	if(user->buf == NULL)
 	  {

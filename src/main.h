@@ -111,6 +111,7 @@ struct user_t
    int key;                           /* Start value for the generated key */
    BYTE rem;                          /* 1 if user is to be removed */
    time_t last_search;                /* Time of the last search attempt */
+   time_t last_activity;               /* Time of last received data (for idle timeout) */
    int  permissions;                  /* Operator permissions (listed above) */
 #ifdef HAVE_SSL
    SSL    *ssl;                       /* SSL connection object, NULL if plain */

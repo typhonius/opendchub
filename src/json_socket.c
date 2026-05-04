@@ -246,22 +246,40 @@ static void handle_json_command(cJSON *root)
       json_send_user_list();
    }
 
-   /* Purge stale connections — remove users stuck in NMDC handshake.
+   /* Purge stale connections — remove users stuck in NMDC handshake
+    * AND fully-connected users who haven't sent any data recently
+    * (dead TCP connections from clients that disappeared without a clean quit).
     * Called periodically by the gateway's maintenance tick. */
    else if (strcmp(type, "purge_stale") == 0) {
       struct sock_t *human_user = human_sock_list;
+      time_t now = time(NULL);
+      int idle_timeout = 300; /* 5 minutes */
       int purged = 0;
+
+      /* Check for optional timeout override from gateway */
+      cJSON *timeout_j = cJSON_GetObjectItemCaseSensitive(root, "idle_timeout");
+      if (cJSON_IsNumber(timeout_j) && timeout_j->valueint > 0)
+         idle_timeout = timeout_j->valueint;
+
       while (human_user != NULL) {
          if ((human_user->user->type & (UNKEYED | NON_LOGGED)) != 0) {
-            logprintf(2, "Purging stale connection at %s\n",
+            logprintf(2, "Purging stale handshake at %s\n",
                       human_user->user->hostname);
+            human_user->user->rem = REMOVE_USER | SEND_QUIT | REMOVE_FROM_LIST;
+            purged++;
+         }
+         else if (human_user->user->last_activity > 0
+                  && (now - human_user->user->last_activity) > idle_timeout) {
+            logprintf(2, "Purging idle user %s at %s (idle %lds)\n",
+                      human_user->user->nick, human_user->user->hostname,
+                      (long)(now - human_user->user->last_activity));
             human_user->user->rem = REMOVE_USER | SEND_QUIT | REMOVE_FROM_LIST;
             purged++;
          }
          human_user = human_user->next;
       }
       if (purged > 0)
-         logprintf(3, "JSON socket: purged %d stale connection(s)\n", purged);
+         logprintf(3, "JSON socket: purged %d stale/idle connection(s)\n", purged);
    }
 
    /* Add a hub to the in-memory linked hub list. */
